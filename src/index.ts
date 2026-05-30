@@ -15,6 +15,7 @@ import { searchSearxng, checkSearxngHealth } from './search/searxng.js';
 import { searchWikipedia } from './search/wikipedia.js';
 import { fetchWebMarkdown } from './tools/fetch.js';
 import { RESEARCH_LEVELS } from './types.js';
+import { conductResearch } from './llm/research.js';
 import { createServer as createHttpServer } from 'http';
 
 // Load configuration
@@ -219,18 +220,17 @@ async function handleToolCall(name: string, args: any) {
       };
 
     case 'llm_research':
-      // [Debt: LLM research implementation]
-      // This requires implementing an agent loop that uses the configured LLM
-      // to autonomously search and browse. For MVP, we return a placeholder.
+      const researchResult = await conductResearch({
+        query: args.query,
+        level: args.level,
+        maxSteps: args.max_steps,
+        minSteps: args.min_steps,
+      });
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({
-              note: 'LLM research is configured but not yet fully implemented in this MVP version.',
-              query: args.query,
-              level: args.level || 'standard',
-            }),
+            text: JSON.stringify(researchResult, null, 2),
           },
         ],
       };
