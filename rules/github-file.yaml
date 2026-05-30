@@ -1,0 +1,38 @@
+name: "github-file-redirect"
+description: "Redirect GitHub blob pages to raw.githubusercontent.com for clean content"
+priority: 100
+
+match:
+  type: domain
+  domains:
+    - github.com
+  paths:
+    - "/{owner}/{repo}/blob/{branch}/{*filepath}"
+
+sources:
+  - name: "raw"
+    type: "redirect"
+    url: "https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{filepath}"
+    validate:
+      status: [200]
+      minLength: 50
+
+  - name: "github-html"
+    type: "original"
+
+process:
+  - when: "source == 'github-html'"
+    actions:
+      - action: remove_until
+        pattern: "^# "
+        keepMatch: true
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[Sign in\\].*$"
+          - "^\\[Copy link\\].*$"
+          - "^\\[Copy path\\].*$"
+          - "^Issue body actions$"
+          - "^No (one|labels|type|fields|milestone).*$"
+          - "^Toggle navigation$"
+          - "^Appearance settings$"
+          - "^\\d+ lines? \\("

@@ -1,0 +1,28 @@
+name: "stackoverflow-cleanup"
+description: "Clean up StackOverflow pages while preserving vote counts"
+priority: 80
+
+match:
+  type: domain
+  domains:
+    - stackoverflow.com
+    - "*.stackoverflow.com"
+    - stackexchange.com
+    - "*.stackexchange.com"
+
+process:
+  - actions:
+      - action: remove_until
+        pattern: "^# "
+        keepMatch: true
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[(share|improve this answer|follow|edit|delete|flag)\\].*$"
+          - "^\\[(asked|modified|viewed)\\].*$"
+          - "^\\[Your Answer\\]$"
+          - "^\\[Start a bounty\\]$"
+      - action: remove_section
+        from: "^## Stack Overflow"
+        to: "end"
+        fromInclusive: false
+        toInclusive: true

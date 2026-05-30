@@ -1,0 +1,13 @@
+name: "login-wall-detector"
+description: "Detect and mark pages that require login"
+priority: 1000
+tags: []
+
+match:
+  type: always
+
+process:
+  - actions:
+      - action: mark
+        status: "login_required"
+        message: "此网站需要登录才能访问完整内容"

@@ -1,0 +1,23 @@
+name: "reddit-cleanup"
+description: "Clean up Reddit pages (uses old.reddit.com)"
+priority: 80
+
+match:
+  type: domain
+  domains:
+    - reddit.com
+    - "*.reddit.com"
+    - old.reddit.com
+
+process:
+  - actions:
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[(permalink|reply|edit|delete|award)\\].*$"
+          - "^\\[give award\\]$"
+          - "^\\[report\\]$"
+      - action: remove_section
+        from: "^\\*\\*\\*"
+        to: "end"
+        fromInclusive: false
+        toInclusive: true

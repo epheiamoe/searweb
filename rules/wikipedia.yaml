@@ -1,0 +1,22 @@
+name: "wikipedia-cleanup"
+description: "Clean up Wikipedia pages (supports multiple languages)"
+priority: 80
+
+match:
+  type: domain
+  domains:
+    - "*.wikipedia.org"
+    - "*.wikimedia.org"
+
+process:
+  - actions:
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[edit\\]$"
+          - "^\\[编辑\\]$"
+          - "^Category:.*$"
+          - "^分类:.*$"
+          - "^\\[(简体|繁體|大陆简体|香港繁體|澳门繁體|大马简体|新加坡简体|台湾正体)\\].*$"
+      - action: remove_from
+        pattern: "^v.*$"
+        inclusive: false

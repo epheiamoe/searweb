@@ -1,0 +1,30 @@
+name: "docs-sites-cleanup"
+description: "Clean up documentation sites (ReadTheDocs, GitBook, etc.)"
+priority: 70
+
+match:
+  type: domain
+  domains:
+    - docs.readthedocs.io
+    - readthedocs.io
+    - docs.gitbook.com
+    - gitbook.com
+    - docs.python.org
+    - readthedocs.org
+
+process:
+  - actions:
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[Learn more about.*\\]$"
+          - "^\\[Sign up\\]$"
+          - "^\\[Edit on GitHub\\]$"
+          - "^\\[Mastodon\\]$"
+      - action: replace
+        pattern: "\\[¶\\]|\\[\\]"
+        replacement: ""
+      - action: remove_section
+        from: "^---$"
+        to: "^---$"
+        fromInclusive: true
+        toInclusive: true

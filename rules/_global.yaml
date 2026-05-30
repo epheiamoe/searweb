@@ -1,0 +1,18 @@
+name: "global-nav-cleanup"
+description: "Remove common navigation elements from all pages"
+priority: 10
+tags: []
+
+match:
+  type: always
+
+process:
+  - actions:
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[Skip to .*\\]$"
+          - "^\\[Sign in\\].*$"
+          - "^\\[Sign up\\].*$"
+          - "^\\[Join now\\].*$"
+          - "^Toggle navigation$"
+          - "^Appearance settings$"

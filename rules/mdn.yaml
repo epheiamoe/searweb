@@ -1,0 +1,22 @@
+name: "mdn-cleanup"
+description: "Remove MDN navigation and clean up documentation pages"
+priority: 80
+
+match:
+  type: domain
+  domains:
+    - developer.mozilla.org
+    - "*.developer.mozilla.org"
+
+process:
+  - actions:
+      - action: remove_until
+        pattern: "^# "
+        keepMatch: true
+      - action: remove_lines_matching
+        patterns:
+          - "^\\[Skip to .*\\]$"
+          - "^Baseline .*available.*$"
+          - "^Report feedback$"
+          - "^See full compatibility$"
+          - "^\\[edit\\]$"

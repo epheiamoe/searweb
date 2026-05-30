@@ -1,0 +1,15 @@
+name: "consecutive-links-removal"
+description: "Remove clusters of 5+ consecutive links (navigation/footer links)"
+priority: 5
+tags:
+  - index_cleanup
+
+match:
+  type: always
+
+process:
+  - actions:
+      - action: remove_consecutive_links
+        threshold: 5
+        maxInlineChars: 10
+        replacement: "[已移除 {count} 个连续链接，设置 with_index=true 获取完整索引]"
