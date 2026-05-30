@@ -13,7 +13,6 @@ export declare class JinaClient {
     fetch(url: string): Promise<JinaResponse>;
     private fetchRemote;
     private fetchLocal;
-    private simpleHtmlToText;
     private getCurrentKey;
     private rotateKey;
     private isRateLimitError;

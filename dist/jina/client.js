@@ -1,5 +1,6 @@
 // src/jina/client.ts - Jina.ai client with multi-key rotation and local fallback
 import { getConfig } from '../config.js';
+import TurndownService from 'turndown';
 export class JinaClient {
     keys;
     currentKeyIndex = 0;
@@ -83,9 +84,6 @@ export class JinaClient {
         }
     }
     async fetchLocal(url) {
-        // [Debt: Local jina-reader fallback]
-        // For MVP, we implement a simple HTML-to-text conversion
-        // In production, this should use the actual jina-reader package or similar
         try {
             const response = await fetch(url, {
                 headers: {
@@ -96,42 +94,20 @@ export class JinaClient {
                 throw new Error(`HTTP ${response.status}`);
             }
             const html = await response.text();
-            const text = this.simpleHtmlToText(html);
+            const turndownService = new TurndownService({
+                headingStyle: 'atx',
+                bulletListMarker: '-',
+                codeBlockStyle: 'fenced',
+            });
+            const markdown = turndownService.turndown(html);
             return {
                 url,
-                content: text,
+                content: markdown,
             };
         }
         catch (e) {
             throw new Error(`Local fallback failed: ${e.message}`);
         }
-    }
-    simpleHtmlToText(html) {
-        // Simple HTML to text conversion for MVP
-        // Remove script and style tags
-        let text = html
-            .replace(/<script[^\u003e]*>[\s\S]*?<\/script>/gi, '')
-            .replace(/<style[^\u003e]*>[\s\S]*?<\/style>/gi, '');
-        // Convert common block elements to newlines
-        text = text
-            .replace(/<\/(p|div|h[1-6]|li|tr)\u003e/gi, '\n')
-            .replace(/<br\s*\/?>/gi, '\n');
-        // Remove all remaining HTML tags
-        text = text.replace(/<[^\u003e]+>/g, '');
-        // Decode common HTML entities
-        text = text
-            .replace(/&nbsp;/g, ' ')
-            .replace(/&lt;/g, '<')
-            .replace(/&gt;/g, '>')
-            .replace(/&amp;/g, '&')
-            .replace(/&quot;/g, '"');
-        // Clean up whitespace
-        text = text
-            .split('\n')
-            .map(line => line.trim())
-            .filter(line => line.length > 0)
-            .join('\n');
-        return text;
     }
     getCurrentKey() {
         if (this.keys.length === 0)

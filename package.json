@@ -14,14 +14,22 @@
     "lint": "echo 'No linter configured'",
     "test": "echo 'No tests configured'"
   },
-  "keywords": ["mcp", "search", "web", "duckduckgo", "searxng", "agent"],
+  "keywords": [
+    "mcp",
+    "search",
+    "web",
+    "duckduckgo",
+    "searxng",
+    "agent"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.14.0",
+    "dockerode": "^4.0.4",
     "js-yaml": "^4.1.0",
     "openai": "^4.85.4",
-    "dockerode": "^4.0.4"
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@types/js-yaml": "^4.0.9",
