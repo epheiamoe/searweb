@@ -27,6 +27,8 @@ export interface FetchResult {
     hasMore: boolean;
     nextCursor?: string;
     source: string;
+    error?: string;
+    status?: 'success' | 'error' | 'login_required' | 'rate_limited';
 }
 export interface ResearchLevel {
     name: string;

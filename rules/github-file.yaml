@@ -16,9 +16,15 @@ sources:
     validate:
       status: [200]
       minLength: 50
+    on_error:
+      action: "continue"  # raw限流时回退到github-html
 
   - name: "github-html"
     type: "original"
+    on_error:
+      action: "abort"
+      message: "无法获取GitHub内容。可能原因：1) 仓库不存在或私有 2) 网络受限 3) GitHub服务不可用"
+      status: "error"
 
 process:
   - when: "source == 'github-html'"

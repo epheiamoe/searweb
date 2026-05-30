@@ -22,6 +22,13 @@ export interface SourceConfig {
   type: 'redirect' | 'original' | 'api';
   url?: string;
   validate?: SourceValidation;
+  on_error?: ErrorConfig;
+}
+
+export interface ErrorConfig {
+  action: 'continue' | 'abort';
+  message?: string;
+  status?: string;
 }
 
 export interface SourceValidation {

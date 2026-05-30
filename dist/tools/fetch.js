@@ -59,12 +59,35 @@ export async function fetchWebMarkdown(url, options = {}) {
             }
         }
         catch (e) {
-            console.warn(`Source ${sourceConfig.name} failed:`, e.message);
+            const errorMessage = e.message;
+            console.warn(`Source ${sourceConfig.name} failed:`, errorMessage);
+            // Check if rule defines error handling behavior
+            if (sourceConfig.on_error) {
+                const onError = sourceConfig.on_error;
+                if (onError.action === 'abort') {
+                    // Return structured error instead of throwing
+                    return {
+                        content: '',
+                        hasMore: false,
+                        source: sourceConfig.name,
+                        error: onError.message || errorMessage,
+                        status: (onError.status || 'error'),
+                    };
+                }
+                // 'continue' is default: proceed to next source
+            }
             // Continue to next source (fallback)
         }
     }
     if (!content) {
-        throw new Error(`Failed to fetch content from ${url}`);
+        // All sources failed
+        return {
+            content: '',
+            hasMore: false,
+            source: sourceUsed,
+            error: `Failed to fetch content from ${url}. All sources exhausted.`,
+            status: 'error',
+        };
     }
     // Apply site-specific rules
     const ruleResult = ruleEngine.executeRules({

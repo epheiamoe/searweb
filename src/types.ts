@@ -41,6 +41,8 @@ export interface FetchResult {
   hasMore: boolean;
   nextCursor?: string;
   source: string;  // which source was actually used (for conditional processing)
+  error?: string;
+  status?: 'success' | 'error' | 'login_required' | 'rate_limited';
 }
 
 export interface ResearchLevel {
