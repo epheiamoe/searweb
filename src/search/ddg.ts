@@ -8,7 +8,7 @@ export async function searchDDG(query: string, limit: number = 10): Promise<Sear
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 
   const response = await jina.fetch(searchUrl);
-  const content = response.content || '';
+  const content = typeof response.content === 'string' ? response.content : '';
 
   return parseDDGResults(content, limit);
 }

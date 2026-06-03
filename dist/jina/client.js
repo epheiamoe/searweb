@@ -72,7 +72,7 @@ export class JinaClient {
             return {
                 title: json.title,
                 url: json.url,
-                content: json.content || json.text || json.data,
+                content: String(json.content || json.text || json.data || ''),
             };
         }
         catch {

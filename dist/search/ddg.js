@@ -4,7 +4,7 @@ export async function searchDDG(query, limit = 10) {
     const jina = new JinaClient();
     const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
     const response = await jina.fetch(searchUrl);
-    const content = response.content || '';
+    const content = typeof response.content === 'string' ? response.content : '';
     return parseDDGResults(content, limit);
 }
 function parseDDGResults(content, limit) {
