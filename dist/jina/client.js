@@ -69,10 +69,14 @@ export class JinaClient {
         // Try to parse as JSON first
         try {
             const json = JSON.parse(text);
+            // Handle nested data structure: { data: { content: "..." } }
+            const content = json.content || json.text ||
+                (json.data && typeof json.data === 'object' ? json.data.content : json.data) ||
+                '';
             return {
-                title: json.title,
-                url: json.url,
-                content: String(json.content || json.text || json.data || ''),
+                title: json.title || (json.data && json.data.title),
+                url: json.url || (json.data && json.data.url),
+                content: String(content),
             };
         }
         catch {
