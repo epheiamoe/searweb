@@ -2,6 +2,13 @@
 
 import Docker from 'dockerode';
 import { Logger, SearxngStatus } from '../types.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const PROJECT_ROOT = join(__dirname, '..', '..', '..');
+const SETTINGS_FILE = join(PROJECT_ROOT, 'searxng-settings.yml');
 
 const CONTAINER_NAME = 'searweb-searxng';
 const CONTAINER_IMAGE = 'searxng/searxng:latest';
@@ -32,35 +39,6 @@ export interface SearxngContainerInfo {
   containerId: string;
   status: 'running' | 'created' | 'exited' | 'unknown';
   autoManaged: boolean;
-}
-
-/**
- * Find an available port starting from the default port
- */
-async function findAvailablePort(startPort: number = DEFAULT_PORT): Promise<number> {
-  const net = await import('net');
-
-  return new Promise((resolve, reject) => {
-    function tryPort(port: number) {
-      const server = net.createServer();
-
-      server.once('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
-          tryPort(port + 1);
-        } else {
-          reject(err);
-        }
-      });
-
-      server.once('listening', () => {
-        server.close(() => resolve(port));
-      });
-
-      server.listen(port, '127.0.0.1');
-    }
-
-    tryPort(startPort);
-  });
 }
 
 /**
@@ -111,7 +89,7 @@ export async function findExistingSearxng(): Promise<SearxngContainerInfo | null
 }
 
 /**
- * Start an existing container
+ * Start an existing container. If port conflict, returns null so caller can recreate.
  */
 export async function startExistingContainer(
   containerId: string
@@ -150,70 +128,189 @@ export async function startExistingContainer(
       autoManaged: true,
     };
   } catch (err) {
-    console.error('Failed to start existing container:', (err as Error).message);
+    const message = (err as Error).message || '';
+    // Port conflict is expected - let caller recreate with new port
+    if (message.includes('port') || message.includes('EADDRINUSE') || message.includes('bind')) {
+      console.error(`Port conflict starting container: ${message}`);
+    } else {
+      console.error('Failed to start existing container:', message);
+    }
     return null;
   }
 }
 
 /**
- * Create and start a new SearXNG container
+ * Force remove a container by ID or name
+ */
+async function forceRemoveContainer(identifier: string): Promise<void> {
+  const docker = getDocker();
+  if (!docker) return;
+
+  try {
+    const container = docker.getContainer(identifier);
+    await container.remove({ force: true });
+    console.error(`Removed old container: ${identifier.slice(0, 12)}`);
+  } catch {
+    // Ignore errors (container might not exist)
+  }
+}
+
+/**
+ * Get ports already allocated by Docker containers
+ */
+async function getDockerAllocatedPorts(): Promise<Set<number>> {
+  const docker = getDocker();
+  if (!docker) return new Set();
+
+  try {
+    const containers = await docker.listContainers({ all: true });
+    const ports = new Set<number>();
+
+    for (const container of containers) {
+      for (const port of container.Ports || []) {
+        if (port.PublicPort) {
+          ports.add(port.PublicPort);
+        }
+      }
+    }
+
+    return ports;
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Find an available port, checking both Node.js and Docker allocations
+ */
+async function findAvailablePortDeductively(
+  startPort: number = DEFAULT_PORT,
+  maxAttempts: number = 20
+): Promise<number | null> {
+  const dockerPorts = await getDockerAllocatedPorts();
+  const net = await import('net');
+
+  for (let port = startPort; port < startPort + maxAttempts; port++) {
+    // Skip if Docker already allocated this port
+    if (dockerPorts.has(port)) continue;
+
+    // Check if Node.js can bind to it
+    const available = await new Promise<boolean>((resolve) => {
+      const server = net.createServer();
+      server.once('error', () => resolve(false));
+      server.once('listening', () => {
+        server.close(() => resolve(true));
+      });
+      server.listen(port, '127.0.0.1');
+    });
+
+    if (available) return port;
+  }
+
+  return null;
+}
+
+/**
+ * Create and start a new SearXNG container.
+ * If name conflict, removes old container first.
+ * If port conflict, retries with next available port.
  */
 export async function createSearxngContainer(
-  port?: number
+  port?: number,
+  logger?: Logger
 ): Promise<SearxngContainerInfo | null> {
   const docker = getDocker();
   if (!docker) return null;
 
-  try {
-    // Pull image if not exists
-    console.error('Pulling SearXNG image...');
-    await new Promise((resolve, reject) => {
-      docker.pull(CONTAINER_IMAGE, (err: any, stream: any) => {
-        if (err) {
-          // Image might already exist locally, continue
-          resolve(undefined);
-          return;
-        }
-        docker.modem.followProgress(stream, (err: any) => {
-          if (err) reject(err);
-          else resolve(undefined);
+  // Try up to 3 ports
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Step 1: Remove any existing container with the same name to avoid conflicts
+      if (attempt === 0) {
+        await forceRemoveContainer(CONTAINER_NAME);
+      }
+
+      // Step 2: Pull image if not exists (only on first attempt)
+      if (attempt === 0) {
+        logger?.info('Pulling SearXNG image...');
+        await new Promise((resolve, reject) => {
+          docker.pull(CONTAINER_IMAGE, (err: any, stream: any) => {
+            if (err) {
+              // Image might already exist locally, continue
+              resolve(undefined);
+              return;
+            }
+            docker.modem.followProgress(stream, (err: any) => {
+              if (err) reject(err);
+              else resolve(undefined);
+            });
+          });
         });
+      }
+
+      // Step 3: Find available port
+      let hostPort: number | null;
+      if (port && attempt === 0) {
+        hostPort = port;
+      } else if (attempt === 0) {
+        hostPort = await findAvailablePortDeductively(DEFAULT_PORT);
+      } else {
+        // Retry with port after the previous attempt
+        const lastPort = port || DEFAULT_PORT;
+        hostPort = await findAvailablePortDeductively(lastPort + attempt);
+      }
+
+      if (!hostPort) {
+        logger?.error('Could not find an available port for SearXNG');
+        return null;
+      }
+
+      logger?.info(`Creating SearXNG container on port ${hostPort}...`);
+
+      // Step 4: Create container with settings mounted
+      const container = await docker.createContainer({
+        Image: CONTAINER_IMAGE,
+        name: CONTAINER_NAME,
+        HostConfig: {
+          PortBindings: {
+            '8080/tcp': [{ HostPort: String(hostPort) }],
+          },
+          RestartPolicy: {
+            Name: 'unless-stopped',
+          },
+          Binds: [
+            `${SETTINGS_FILE}:/etc/searxng/settings.yml:ro`,
+          ],
+        },
+        ExposedPorts: {
+          '8080/tcp': {},
+        },
       });
-    });
 
-    // Find available port
-    const hostPort = port || await findAvailablePort(DEFAULT_PORT);
+      // Step 5: Start container
+      await container.start();
 
-    console.error(`Creating SearXNG container on port ${hostPort}...`);
+      return {
+        url: `http://localhost:${hostPort}`,
+        containerId: container.id,
+        status: 'running',
+        autoManaged: true,
+      };
+    } catch (error) {
+      const message = (error as Error).message || '';
+      const isPortConflict = message.includes('port') || message.includes('EADDRINUSE') || message.includes('bind') || message.includes('not available');
 
-    const container = await docker.createContainer({
-      Image: CONTAINER_IMAGE,
-      name: CONTAINER_NAME,
-      HostConfig: {
-        PortBindings: {
-          '8080/tcp': [{ HostPort: String(hostPort) }],
-        },
-        RestartPolicy: {
-          Name: 'unless-stopped',
-        },
-      },
-      ExposedPorts: {
-        '8080/tcp': {},
-      },
-    });
+      if (isPortConflict && attempt < 2) {
+        logger?.warn(`Port conflict on attempt ${attempt + 1}, retrying with next port...`);
+        continue;
+      }
 
-    await container.start();
-
-    return {
-      url: `http://localhost:${hostPort}`,
-      containerId: container.id,
-      status: 'running',
-      autoManaged: true,
-    };
-  } catch (error) {
-    console.error('Failed to create SearXNG container:', error);
-    return null;
+      logger?.error('Failed to create SearXNG container:', error);
+      return null;
+    }
   }
+
+  return null;
 }
 
 /**
@@ -251,9 +348,10 @@ export async function waitForSearxngHealthy(
  * 1. Check if Docker is available
  * 2. Find existing searweb-searxng container
  * 3. If found and running, return URL
- * 4. If found but stopped, start it
- * 5. If not found, create new container
- * 6. Wait for health check
+ * 4. If found but stopped/created, try to start it
+ * 5. If start fails (e.g., port conflict), remove and recreate
+ * 6. If not found, create new container
+ * 7. Wait for health check
  */
 export async function ensureSearxngRunning(logger: Logger): Promise<SearxngStatus> {
   // Check Docker availability
@@ -274,10 +372,9 @@ export async function ensureSearxngRunning(logger: Logger): Promise<SearxngStatu
   if (existing) {
     logger.info(`Found existing SearXNG container: ${existing.containerId.slice(0, 12)} (status: ${existing.status})`);
 
+    // Case 1: Already running - just verify health
     if (existing.status?.toLowerCase() === 'running') {
       logger.info(`Container is already running at ${existing.url}`);
-
-      // Verify it's healthy
       const healthy = await waitForSearxngHealthy(existing.url, 10000);
       return {
         url: existing.url,
@@ -286,25 +383,28 @@ export async function ensureSearxngRunning(logger: Logger): Promise<SearxngStatu
       };
     }
 
-    // Start existing container
+    // Case 2: Created or exited - try to start it
     logger.info('Starting existing container...');
     const started = await startExistingContainer(existing.containerId);
 
     if (started) {
-      logger.info(`Waiting for SearXNG to be ready at ${started.url}...`);
+      logger.info(`Container started at ${started.url}`);
       const healthy = await waitForSearxngHealthy(started.url);
-
       return {
         url: started.url,
         healthy,
         autoManaged: true,
       };
     }
+
+    // Case 3: Start failed (likely port conflict) - remove and recreate
+    logger.warn('Start failed, removing old container and recreating with new port...');
+    await forceRemoveContainer(existing.containerId);
   }
 
-  // Create new container
+  // Create new container (or recreate after removal)
   logger.info('Creating new SearXNG container...');
-  const created = await createSearxngContainer();
+  const created = await createSearxngContainer(undefined, logger);
 
   if (created) {
     logger.info(`Waiting for SearXNG to be ready at ${created.url}...`);

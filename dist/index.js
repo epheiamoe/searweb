@@ -6,22 +6,31 @@ function isConfigFile(arg) {
 }
 async function main() {
     const args = process.argv.slice(2);
-    // If no arguments, assume MCP server mode (backward compatible)
+    // MCP server mode: 'searweb server [config]' or 'searweb config.json'
+    if (args[0] === 'server' || (args.length === 1 && isConfigFile(args[0]))) {
+        const configPath = args[0] === 'server' ? args[1] : args[0];
+        const { runMcpApp } = await import('./app/mcp/index.js');
+        await runMcpApp(configPath);
+        return;
+    }
+    // If no arguments, show help
     if (args.length === 0) {
-        const { runMcpApp } = await import('./app/mcp/index.js');
-        await runMcpApp();
-        return;
-    }
-    // If first argument is a config file, run MCP server with that config
-    if (args.length === 1 && isConfigFile(args[0])) {
-        const { runMcpApp } = await import('./app/mcp/index.js');
-        await runMcpApp(args[0]);
-        return;
-    }
-    // If first argument is 'server', run MCP server mode
-    if (args[0] === 'server') {
-        const { runMcpApp } = await import('./app/mcp/index.js');
-        await runMcpApp(args[1]); // optional config path
+        console.log('Searweb v0.2.0 - Unified web search with DDG, SearXNG, Wikipedia, and LLM research');
+        console.log('');
+        console.log('Usage: searweb <command> [options]');
+        console.log('');
+        console.log('Commands:');
+        console.log('  server [config]         Start MCP server');
+        console.log('  ddg <query>             Search DuckDuckGo');
+        console.log('  xng <query>             Search SearXNG (auto-starts if configured)');
+        console.log('  fetch <url>             Fetch webpage as clean markdown');
+        console.log('  wiki <query>            Search Wikipedia');
+        console.log('  research <query>        AI-powered research with streaming');
+        console.log('  config                  Interactive configuration wizard');
+        console.log('');
+        console.log('Run `searweb <command> --help` for command-specific options.');
+        console.log('');
+        console.log('For MCP integration, use: searweb server [config.json]');
         return;
     }
     // Otherwise, run CLI mode

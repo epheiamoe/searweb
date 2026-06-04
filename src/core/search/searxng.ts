@@ -16,6 +16,7 @@ export async function searchSearxng(
   const response = await fetch(searchUrl, {
     headers: {
       'Accept': 'application/json',
+      'User-Agent': 'searweb/1.0',
     },
   });
 

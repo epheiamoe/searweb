@@ -1,0 +1,14 @@
+use_default_settings: true
+general:
+  instance_name: "searweb-searxng"
+  debug: false
+search:
+  formats:
+    - html
+    - json
+server:
+  secret_key: "searweb-local-secret-key-change-in-production"
+  limiter: false
+  image_proxy: false
+ui:
+  static_use_hash: true
