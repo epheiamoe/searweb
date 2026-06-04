@@ -20,6 +20,7 @@ import {
   wrapToolResult,
   LOOP_LIMIT_ERROR,
   buildForceContinueMessage,
+  buildContinueContextMessage,
   buildInitialUserPrompt,
 } from './prompts.js';
 import { getResearchTools, parseToolCall } from './tools.js';
@@ -82,6 +83,11 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
       pendingThinking: null,
       pendingInformal: null,
     };
+    // Insert a context bridge to help the LLM understand the reset
+    state.messages.push({
+      role: 'system',
+      content: buildContinueContextMessage(existingState.loopCount, existingState.toolCount, minTools, maxLoops),
+    });
     // Append the new query as a user message
     state.messages.push({ role: 'user', content: query });
   } else {

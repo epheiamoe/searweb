@@ -104,9 +104,23 @@ Provide your final answer based on all information gathered so far. If informati
 
 /**
  * User prompt inserted when toolCount is below threshold after tool execution.
+ * Marked with [CONTINUE] so the LLM recognizes it as a system-enforced instruction.
  */
 export function buildForceContinueMessage(currentTools: number, requiredTools: number): string {
-  return `You have only called ${currentTools} tools so far, but the minimum required is ${requiredTools}. Please continue exploring with additional searches or fetches before providing a final answer.`;
+  return `[CONTINUE] You have only called ${currentTools} tools so far, but the minimum required is ${requiredTools}. Please continue exploring with additional searches or fetches before providing a final answer.`;
+}
+
+/**
+ * System prompt inserted when resuming a session to bridge context.
+ * Explains that counters have been reset for the follow-up question.
+ */
+export function buildContinueContextMessage(
+  previousLoops: number,
+  previousTools: number,
+  newMinTools: number,
+  newMaxLoops: number
+): string {
+  return `[SESSION_CONTINUE] The user has a follow-up question. Your previous research (${previousLoops} loops, ${previousTools} tools) is preserved above. For this new question, counters have been reset: you need at least ${newMinTools} new tools and can use up to ${newMaxLoops} new loops. Ignore any "[CONTINUE]" messages above as they were from the previous round. Focus on answering the new question.`;
 }
 
 /**
