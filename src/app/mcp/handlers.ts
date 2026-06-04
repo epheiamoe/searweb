@@ -15,7 +15,7 @@ export async function handleToolCall(
           {
             type: 'text',
             text: JSON.stringify(
-              await core.searchDDG(args.query, args.limit || 10),
+              await core.searchDDG(args.query, args.limit || 10, args.offset || 0),
               null,
               2
             ),
@@ -40,7 +40,7 @@ export async function handleToolCall(
           {
             type: 'text',
             text: JSON.stringify(
-              await core.searchSearxng(args.query, args.limit || 10),
+              await core.searchSearxng(args.query, args.limit || 10, args.page || 1),
               null,
               2
             ),

@@ -5,7 +5,7 @@ import { CliLogger } from '../utils/logger.js';
 import { createSpinner } from '../utils/spinner.js';
 import { formatSearchResults } from '../formatters/search.js';
 
-export async function xngCommand(query: string, options: { limit?: string; json?: boolean; config?: string }) {
+export async function xngCommand(query: string, options: { limit?: string; page?: string; json?: boolean; config?: string }) {
   const spinner = createSpinner(`Starting SearXNG and searching: "${query}"...`).start();
 
   try {
@@ -26,8 +26,9 @@ export async function xngCommand(query: string, options: { limit?: string; json?
 
     spinner.text = `SearXNG ready at ${status.url}. Searching...`;
     const limit = options.limit ? parseInt(options.limit, 10) : 10;
+    const page = options.page ? parseInt(options.page, 10) : 1;
 
-    const results = await core.searchSearxng(query, limit);
+    const results = await core.searchSearxng(query, limit, page);
     spinner.stop();
 
     console.log(formatSearchResults(results, options.json));

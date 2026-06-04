@@ -30,6 +30,7 @@ program
   .description('Search the web using DuckDuckGo')
   .argument('<query>', 'Search query')
   .option('-l, --limit <number>', 'Maximum number of results', '10')
+  .option('-o, --offset <number>', 'Result offset for pagination (e.g. 30 for page 2)')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output as JSON')
   .action(async (query: string, options: any) => {
@@ -41,6 +42,7 @@ program
   .description('Search using SearXNG (auto-starts container if configured)')
   .argument('<query>', 'Search query')
   .option('-l, --limit <number>', 'Maximum number of results', '10')
+  .option('-p, --page <number>', 'Page number for pagination', '1')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output as JSON')
   .action(async (query: string, options: any) => {

@@ -7,7 +7,7 @@ export function getTools(hasLLM: boolean): Tool[] {
   const tools: Tool[] = [
     {
       name: 'search_web_ddg',
-      description: 'Search the web using DuckDuckGo HTML interface. Returns structured search results with title, URL, and snippet.',
+      description: 'Search the web using DuckDuckGo HTML interface. Returns structured search results with title, URL, and snippet. Supports pagination via offset.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -19,6 +19,11 @@ export function getTools(hasLLM: boolean): Tool[] {
             type: 'number',
             description: 'Maximum number of results (default: 10)',
             default: 10,
+          },
+          offset: {
+            type: 'number',
+            description: 'Result offset for pagination (e.g. 30 for page 2). Each page is roughly 30 results.',
+            default: 0,
           },
         },
         required: ['query'],
@@ -116,7 +121,7 @@ export function getTools(hasLLM: boolean): Tool[] {
 export function getSearxngTool(): Tool {
   return {
     name: 'search_web_searxng',
-    description: 'Search the web using SearXNG instance. Returns structured search results with title, URL, and snippet. Requires SearXNG to be configured and healthy.',
+    description: 'Search the web using SearXNG instance. Returns structured search results with title, URL, and snippet. Shows underlying search engines as source. Supports pagination via page number. Requires SearXNG to be configured and healthy.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -128,6 +133,11 @@ export function getSearxngTool(): Tool {
           type: 'number',
           description: 'Maximum number of results (default: 10)',
           default: 10,
+        },
+        page: {
+          type: 'number',
+          description: 'Page number for pagination (default: 1)',
+          default: 1,
         },
       },
       required: ['query'],

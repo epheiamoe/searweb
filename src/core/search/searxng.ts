@@ -5,13 +5,17 @@ import { SearchResult } from '../types.js';
 export async function searchSearxng(
   searxngUrl: string,
   query: string,
-  limit: number = 10
+  limit: number = 10,
+  page: number = 1
 ): Promise<SearchResult[]> {
   if (!searxngUrl) {
     throw new Error('SearXNG URL not configured');
   }
 
-  const searchUrl = `${searxngUrl}/search?q=${encodeURIComponent(query)}&format=json`;
+  let searchUrl = `${searxngUrl}/search?q=${encodeURIComponent(query)}&format=json`;
+  if (page > 1) {
+    searchUrl += `&pageno=${page}`;
+  }
 
   const response = await fetch(searchUrl, {
     headers: {
@@ -24,7 +28,15 @@ export async function searchSearxng(
     throw new Error(`SearXNG search failed: ${response.status} ${response.statusText}`);
   }
 
-  const data = await response.json() as { results?: Array<{ title?: string; url?: string; content?: string; snippet?: string }> };
+  const data = await response.json() as {
+    results?: Array<{
+      title?: string;
+      url?: string;
+      content?: string;
+      snippet?: string;
+      engines?: string[];
+    }>
+  };
 
   if (!data.results || !Array.isArray(data.results)) {
     return [];
@@ -34,7 +46,8 @@ export async function searchSearxng(
     title: result.title || '',
     url: result.url || '',
     snippet: result.content || result.snippet || '',
-    source: 'searxng',
+    // Show underlying engines, not just "searxng"
+    source: result.engines?.join(', ') || 'searxng',
   }));
 }
 

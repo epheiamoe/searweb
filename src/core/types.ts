@@ -57,6 +57,7 @@ export interface SearchResult {
   title: string;
   url: string;
   snippet: string;
+  /** Source identifier. For SearXNG, this is a comma-separated list of underlying engines (e.g. "google,brave"). */
   source: string;
 }
 
@@ -131,8 +132,8 @@ export interface CoreServices {
   logger: Logger;
 
   // Search
-  searchDDG(query: string, limit?: number): Promise<SearchResult[]>;
-  searchSearxng(query: string, limit?: number): Promise<SearchResult[]>;
+  searchDDG(query: string, limit?: number, offset?: number): Promise<SearchResult[]>;
+  searchSearxng(query: string, limit?: number, page?: number): Promise<SearchResult[]>;
   searchWikipedia(query: string, lang?: string, limit?: number): Promise<SearchResult[]>;
 
   // Fetch

@@ -6,9 +6,13 @@ import { JinaClient } from '../fetch/jina-client.js';
 export async function searchDDG(
   jinaClient: JinaClient,
   query: string,
-  limit: number = 10
+  limit: number = 10,
+  offset: number = 0
 ): Promise<SearchResult[]> {
-  const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  let searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+  if (offset > 0) {
+    searchUrl += `&s=${offset}`;
+  }
 
   const response = await jinaClient.fetch(searchUrl);
   const content = typeof response.content === 'string' ? response.content : '';

@@ -37,15 +37,15 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
     config,
     logger: log,
 
-    async searchDDG(query: string, limit?: number) {
-      return searchDDG(jinaClient, query, limit);
+    async searchDDG(query: string, limit?: number, offset?: number) {
+      return searchDDG(jinaClient, query, limit, offset);
     },
 
-    async searchSearxng(query: string, limit?: number) {
+    async searchSearxng(query: string, limit?: number, page?: number) {
       if (!_searxngUrl) {
         throw new Error('SearXNG URL not configured');
       }
-      return searchSearxng(_searxngUrl, query, limit);
+      return searchSearxng(_searxngUrl, query, limit, page);
     },
 
     async searchWikipedia(query: string, lang?: string, limit?: number) {
