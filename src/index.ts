@@ -25,7 +25,8 @@ async function main() {
     console.log('');
     console.log('Commands:');
     console.log('  server [config]         Start MCP server');
-    console.log('  search <query>          Search the web using DuckDuckGo');
+    console.log('  ddg <query>             Search DuckDuckGo');
+    console.log('  xng <query>             Search SearXNG (auto-starts if configured)');
     console.log('  fetch <url>             Fetch webpage as clean markdown');
     console.log('  wiki <query>            Search Wikipedia');
     console.log('  research <query>        AI-powered research with streaming');

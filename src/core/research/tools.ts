@@ -11,8 +11,8 @@ export interface ToolDefinition {
 /**
  * OpenAI ChatCompletionTool definitions for research agent.
  */
-export function getResearchTools(): ChatCompletionTool[] {
-  return [
+export function getResearchTools(searxngAvailable: boolean = false): ChatCompletionTool[] {
+  const tools: ChatCompletionTool[] = [
     {
       type: 'function',
       function: {
@@ -89,6 +89,33 @@ export function getResearchTools(): ChatCompletionTool[] {
       },
     },
   ];
+
+  if (searxngAvailable) {
+    tools.push({
+      type: 'function',
+      function: {
+        name: 'search_web_searxng',
+        description: 'Search the web using SearXNG metasearch engine. Returns aggregated results from multiple search engines. Use for comprehensive topic coverage or when DDG results are insufficient.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'Search query',
+            },
+            limit: {
+              type: 'number',
+              description: 'Maximum results (default: 10, max: 20)',
+              default: 10,
+            },
+          },
+          required: ['query'],
+        },
+      },
+    });
+  }
+
+  return tools;
 }
 
 /**

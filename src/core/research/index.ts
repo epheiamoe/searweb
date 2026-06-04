@@ -12,6 +12,7 @@ import OpenAI from 'openai';
 import { JinaClient } from '../fetch/jina-client.js';
 import { FetchService } from '../fetch/index.js';
 import { searchDDG } from '../search/ddg.js';
+import { searchSearxng } from '../search/searxng.js';
 import { searchWikipedia } from '../search/wikipedia.js';
 import { runResearchAgent, ToolExecutor } from './agent.js';
 
@@ -20,10 +21,12 @@ export class ResearchService {
   private logger: Logger;
   private fetchService: FetchService;
   private jinaClient: JinaClient;
+  private searxngUrl?: string;
 
-  constructor(config: ServerConfig, logger: Logger, existingFetchService?: FetchService, existingJinaClient?: JinaClient) {
+  constructor(config: ServerConfig, logger: Logger, existingFetchService?: FetchService, existingJinaClient?: JinaClient, searxngUrl?: string) {
     this.config = config;
     this.logger = logger;
+    this.searxngUrl = searxngUrl;
     this.jinaClient = existingJinaClient || new JinaClient({
       apiKeys: config.jinaApiKeys,
       disableRemote: config.jinaDisableRemote,
@@ -64,6 +67,11 @@ export class ResearchService {
       fetchWebMarkdown: (url: string, opts?: any) => this.fetchService.fetchWebMarkdown(url, opts),
     };
 
+    // Add SearXNG if available
+    if (this.searxngUrl) {
+      toolExecutor.searchSearxng = (query: string, limit?: number) => searchSearxng(this.searxngUrl!, query, limit);
+    }
+
     // Run agent loop
     return runResearchAgent({
       openai,
@@ -75,6 +83,7 @@ export class ResearchService {
       logger: this.logger,
       onProgress: options.onProgress,
       streamAnswer: options.streamAnswer,
+      searxngAvailable: !!this.searxngUrl,
     });
   }
 }

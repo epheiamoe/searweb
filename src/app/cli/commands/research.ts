@@ -19,11 +19,21 @@ export async function researchCommand(
   options: { level?: string; maxSteps?: string; minSteps?: string; json?: boolean; config?: string }
 ) {
   const spinner = createSpinner(`Starting research: "${query}"...`).start();
-  spinner.stop();
 
   try {
     const config = loadConfig(options.config);
     const core = createCore(config, new CliLogger());
+
+    // Auto-start SearXNG if configured
+    if (config.searxngAutoStart) {
+      spinner.text = 'Auto-starting SearXNG...';
+      const status = await core.ensureSearxngRunning();
+      if (status.healthy) {
+        spinner.text = `SearXNG ready at ${status.url}`;
+      }
+    }
+
+    spinner.stop();
 
     const level = (options.level as 'quick' | 'standard' | 'deep') || 'standard';
     const maxSteps = options.maxSteps ? parseInt(options.maxSteps, 10) : undefined;

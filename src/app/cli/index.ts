@@ -3,7 +3,8 @@
 
 import { Command } from 'commander';
 import { serverCommand } from './commands/server.js';
-import { searchCommand } from './commands/search.js';
+import { ddgCommand } from './commands/ddg.js';
+import { xngCommand } from './commands/xng.js';
 import { fetchCommand } from './commands/fetch.js';
 import { wikiCommand } from './commands/wiki.js';
 import { researchCommand } from './commands/research.js';
@@ -25,14 +26,25 @@ program
   });
 
 program
-  .command('search')
+  .command('ddg')
   .description('Search the web using DuckDuckGo')
   .argument('<query>', 'Search query')
   .option('-l, --limit <number>', 'Maximum number of results', '10')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output as JSON')
   .action(async (query: string, options: any) => {
-    await searchCommand(query, options);
+    await ddgCommand(query, options);
+  });
+
+program
+  .command('xng')
+  .description('Search using SearXNG (auto-starts container if configured)')
+  .argument('<query>', 'Search query')
+  .option('-l, --limit <number>', 'Maximum number of results', '10')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('--json', 'Output as JSON')
+  .action(async (query: string, options: any) => {
+    await xngCommand(query, options);
   });
 
 program

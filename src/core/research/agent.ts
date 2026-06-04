@@ -24,6 +24,7 @@ import { getResearchTools, parseToolCall } from './tools.js';
  */
 export interface ToolExecutor {
   searchDDG(query: string, limit?: number): Promise<SearchResult[]>;
+  searchSearxng?(query: string, limit?: number): Promise<SearchResult[]>;
   searchWikipedia(query: string, lang?: string, limit?: number): Promise<SearchResult[]>;
   fetchWebMarkdown(url: string, options?: FetchOptions): Promise<FetchResult>;
 }
@@ -41,6 +42,7 @@ export interface AgentOptions {
   logger: Logger;
   onProgress?: (progress: ResearchProgress) => void;
   streamAnswer?: boolean;
+  searxngAvailable?: boolean;
 }
 
 /**
@@ -69,7 +71,7 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
     nextSourceIndex: 1,
   };
 
-  const tools = getResearchTools();
+  const tools = getResearchTools(options.searxngAvailable || false);
   let finalAnswer = '';
 
   // Progress helper
@@ -138,9 +140,20 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
             switch (name) {
               case 'search_web_ddg':
                 progressType = 'search';
-                progressMessage = `🔍 Searching: "${args.query}"`;
+                progressMessage = `🔍 DDG: "${args.query}"`;
                 const ddgResults = await toolExecutor.searchDDG(args.query, args.limit || 10);
                 resultText = formatSearchResults(ddgResults, state);
+                break;
+
+              case 'search_web_searxng':
+                progressType = 'search';
+                progressMessage = `🔍 SearXNG: "${args.query}"`;
+                if (!toolExecutor.searchSearxng) {
+                  resultText = 'Error: SearXNG is not available.';
+                } else {
+                  const searxngResults = await toolExecutor.searchSearxng(args.query, args.limit || 10);
+                  resultText = formatSearchResults(searxngResults, state);
+                }
                 break;
 
               case 'search_wikipedia':

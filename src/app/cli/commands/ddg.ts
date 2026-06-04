@@ -1,12 +1,12 @@
-// src/app/cli/commands/search.ts - Search command
+// src/app/cli/commands/ddg.ts - DuckDuckGo search command
 
 import { createCore, loadConfig } from '../../../core/index.js';
 import { CliLogger } from '../utils/logger.js';
 import { createSpinner } from '../utils/spinner.js';
 import { formatSearchResults } from '../formatters/search.js';
 
-export async function searchCommand(query: string, options: { limit?: string; json?: boolean; config?: string }) {
-  const spinner = createSpinner(`Searching: "${query}"...`).start();
+export async function ddgCommand(query: string, options: { limit?: string; json?: boolean; config?: string }) {
+  const spinner = createSpinner(`Searching DuckDuckGo: "${query}"...`).start();
 
   try {
     const config = loadConfig(options.config);
@@ -18,7 +18,7 @@ export async function searchCommand(query: string, options: { limit?: string; js
 
     console.log(formatSearchResults(results, options.json));
   } catch (error) {
-    spinner.fail(`Search failed: ${(error as Error).message}`);
+    spinner.fail(`DDG search failed: ${(error as Error).message}`);
     process.exit(1);
   }
 }

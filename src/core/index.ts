@@ -29,9 +29,9 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
     localFallback: config.jinaLocalFallback,
   });
   const fetchService = new FetchService(config, log);
-  const researchService = new ResearchService(config, log, fetchService, jinaClient);
-
+  
   let _searxngUrl: string | undefined = config.searxngUrl;
+  let _searxngHealthy = false;
 
   return {
     config,
@@ -57,6 +57,8 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
     },
 
     async conductResearch(options: ResearchOptions) {
+      // Create ResearchService with current searxngUrl
+      const researchService = new ResearchService(config, log, fetchService, jinaClient, _searxngUrl);
       return researchService.conductResearch(options);
     },
 
@@ -64,6 +66,7 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
       const status = await ensureSearxngRunning(log);
       if (status.healthy && status.url) {
         _searxngUrl = status.url;
+        _searxngHealthy = true;
       }
       return status;
     },
