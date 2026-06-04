@@ -75,13 +75,17 @@ program
 program
   .command('research')
   .description('Conduct AI-powered research with streaming')
-  .argument('<query>', 'Research question or topic')
+  .argument('[query]', 'Research question or topic')
   .option('--level <level>', 'Research level: quick, standard, deep', 'standard')
   .option('--max-loops <number>', 'Override maximum number of research loops')
   .option('--min-tools <number>', 'Override minimum number of tool calls')
+  .option('-s, --session <id>', 'Continue an existing research session')
+  .option('--list', 'List all saved research sessions')
+  .option('--rm <id>', 'Delete a research session')
+  .option('-y, --yes', 'Confirm deletion without prompting')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output final result as JSON (disables streaming)')
-  .action(async (query: string, options: any) => {
+  .action(async (query: string | undefined, options: any) => {
     await researchCommand(query, options);
   });
 

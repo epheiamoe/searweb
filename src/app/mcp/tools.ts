@@ -87,7 +87,7 @@ export function getTools(hasLLM: boolean): Tool[] {
   if (hasLLM) {
     tools.push({
       name: 'llm_research',
-      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minTools} tools, ${l.maxLoops} loops)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer.`,
+      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minTools} tools, ${l.maxLoops} loops)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer. Supports session continuation via session_id.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -108,6 +108,10 @@ export function getTools(hasLLM: boolean): Tool[] {
           min_tools: {
             type: 'number',
             description: 'Override: minimum number of tool calls (overrides level)',
+          },
+          session_id: {
+            type: 'string',
+            description: 'Continue an existing research session by ID',
           },
         },
         required: ['query'],

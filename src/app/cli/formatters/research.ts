@@ -139,7 +139,7 @@ class TreeFormatter {
   // ─── Format helpers ───
 
   private formatThinking(text: string): string {
-    return `${c.thinking('🤔')} ${c.thinking(text)}`;
+    return `${c.thinking('🤔')} ${c.thinking('thinking:')} ${c.thinking(text)}`;
   }
 
   private formatInformal(text: string): string {

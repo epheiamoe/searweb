@@ -14,7 +14,13 @@ import { FetchService } from '../fetch/index.js';
 import { searchDDG } from '../search/ddg.js';
 import { searchSearxng } from '../search/searxng.js';
 import { searchWikipedia } from '../search/wikipedia.js';
-import { runResearchAgent, ToolExecutor } from './agent.js';
+import { runResearchAgent, ToolExecutor, AgentState } from './agent.js';
+import {
+  generateSessionId,
+  saveSession,
+  loadSession,
+  ResearchSession,
+} from './session-store.js';
 
 export class ResearchService {
   private config: ServerConfig;
@@ -60,6 +66,37 @@ export class ResearchService {
       }
     }
 
+    // Handle session
+    let sessionId: string;
+    let existingState: AgentState | undefined;
+
+    if (options.sessionId) {
+      // Continue existing session
+      const session = loadSession(options.sessionId);
+      if (!session) {
+        throw new Error(`Session not found: ${options.sessionId}`);
+      }
+      sessionId = session.id;
+      existingState = {
+        messages: session.messages,
+        loopCount: session.loopCount,
+        toolCount: session.toolCount,
+        sources: new Map(Object.entries(session.sources).map(([k, v]) => [parseInt(k, 10), v])),
+        nextSourceIndex: session.nextSourceIndex,
+        pendingThinking: null,
+        pendingInformal: null,
+      };
+      // Use session's budget settings unless overridden
+      if (options.maxLoops === undefined && options.minTools === undefined && !options.level) {
+        minTools = session.minTools;
+        maxLoops = session.maxLoops;
+      }
+      this.logger.info(`Continuing session ${sessionId}`);
+    } else {
+      // New session
+      sessionId = generateSessionId();
+    }
+
     // Create tool executor
     const toolExecutor: ToolExecutor = {
       searchDDG: (query: string, limit?: number) => searchDDG(this.jinaClient, query, limit),
@@ -72,8 +109,15 @@ export class ResearchService {
       toolExecutor.searchSearxng = (query: string, limit?: number) => searchSearxng(this.searxngUrl!, query, limit);
     }
 
+    // Wrap progress callback to auto-save session
+    const wrappedOnProgress = options.onProgress
+      ? (progress: ResearchProgress) => {
+          options.onProgress!(progress);
+        }
+      : undefined;
+
     // Run agent loop
-    return runResearchAgent({
+    const result = await runResearchAgent({
       openai,
       model: this.config.llm.model,
       toolExecutor,
@@ -81,9 +125,37 @@ export class ResearchService {
       minTools,
       maxLoops,
       logger: this.logger,
-      onProgress: options.onProgress,
+      onProgress: wrappedOnProgress,
       streamAnswer: options.streamAnswer,
       searxngAvailable: !!this.searxngUrl,
+      existingState,
     });
+
+    // Save session
+    const session: ResearchSession = {
+      id: sessionId,
+      query: existingState
+        ? (loadSession(sessionId)?.query || options.query) // keep original query
+        : options.query,
+      createdAt: existingState
+        ? (loadSession(sessionId)?.createdAt || new Date().toISOString())
+        : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      messages: result._messages || [],
+      sources: result._sources ? Object.fromEntries(result._sources) : {},
+      nextSourceIndex: result._nextSourceIndex || 1,
+      loopCount: result.loops,
+      toolCount: result.tools,
+      minTools,
+      maxLoops,
+    };
+    saveSession(session);
+
+    // Return without internal fields
+    const { _messages, _sources, _nextSourceIndex, ...publicResult } = result;
+    return {
+      ...publicResult,
+      sessionId,
+    };
   }
 }

@@ -1,10 +1,11 @@
-// src/app/cli/commands/research.ts - AI research command with tree-style display
+// src/app/cli/commands/research.ts - AI research command with tree-style display and session management
 
 import { createCore, loadConfig } from '../../../core/index.js';
 import { CliLogger } from '../utils/logger.js';
 import { createSpinner } from '../utils/spinner.js';
-import { createResearchFormatter, formatResearchResult } from '../formatters/research.js';
+import { createResearchFormatter } from '../formatters/research.js';
 import { ResearchProgress } from '../../../core/types.js';
+import { listSessions, deleteSession } from '../../../core/research/session-store.js';
 
 let chalk: typeof import('chalk').default | undefined;
 
@@ -14,10 +15,62 @@ try {
   // chalk not available
 }
 
+/**
+ * Main research command handler.
+ */
 export async function researchCommand(
-  query: string,
-  options: { level?: string; maxLoops?: string; minTools?: string; json?: boolean; config?: string }
+  query: string | undefined,
+  options: {
+    level?: string;
+    maxLoops?: string;
+    minTools?: string;
+    json?: boolean;
+    config?: string;
+    session?: string;
+    list?: boolean;
+    rm?: string;
+    yes?: boolean;
+  }
 ) {
+  // Handle --list
+  if (options.list) {
+    const sessions = listSessions();
+    if (sessions.length === 0) {
+      console.log('No research sessions found.');
+      return;
+    }
+    console.log('Research sessions:');
+    console.log('');
+    for (const s of sessions) {
+      const date = new Date(s.updatedAt).toLocaleDateString();
+      console.log(`  ${s.id}  "${s.query}"  ${date}`);
+    }
+    return;
+  }
+
+  // Handle --rm
+  if (options.rm) {
+    const id = options.rm;
+    if (!options.yes) {
+      console.log(`Delete session ${id}? Use --yes (-y) to confirm.`);
+      return;
+    }
+    const success = deleteSession(id);
+    if (success) {
+      console.log(`Session ${id} deleted.`);
+    } else {
+      console.error(`Session ${id} not found.`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // Validate query for normal research
+  if (!query) {
+    console.error('Error: Query is required. Use --list to see sessions or --rm to delete.');
+    process.exit(1);
+  }
+
   const spinner = createSpinner(`Starting research: "${query}"...`).start();
 
   try {
@@ -40,12 +93,12 @@ export async function researchCommand(
     const minTools = options.minTools ? parseInt(options.minTools, 10) : undefined;
 
     if (options.json) {
-      // JSON mode: no tree display, just output final result
       const result = await core.conductResearch({
         query,
         level,
         maxLoops,
         minTools,
+        sessionId: options.session,
         streamAnswer: false,
       });
       console.log(JSON.stringify(result, null, 2));
@@ -63,6 +116,7 @@ export async function researchCommand(
       level,
       maxLoops,
       minTools,
+      sessionId: options.session,
       streamAnswer: true,
       onProgress: (progress: ResearchProgress) => {
         if (progress.type === 'answer') {
@@ -74,9 +128,15 @@ export async function researchCommand(
 
     // Flush any remaining buffer and print done line
     if (answerStreamed) {
-      console.log(''); // Ensure newline before Done line
+      console.log('');
     }
     formatter.printDone(result.loops, result.tools, result.sources.length);
+
+    // Print session info
+    if (result.sessionId) {
+      console.log('');
+      console.log(`💾 Session saved: ${result.sessionId} (use -s to continue)`);
+    }
 
     // If answer was not streamed, print it now
     if (result.answer && !answerStreamed) {

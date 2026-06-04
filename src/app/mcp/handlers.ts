@@ -83,6 +83,7 @@ export async function handleToolCall(
         level: args.level,
         maxLoops: args.max_loops,
         minTools: args.min_tools,
+        sessionId: args.session_id,
       });
       return {
         content: [

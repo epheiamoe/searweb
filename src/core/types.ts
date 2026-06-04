@@ -120,6 +120,8 @@ export interface ResearchOptions {
   minTools?: number;
   onProgress?: (progress: ResearchProgress) => void;
   streamAnswer?: boolean;
+  /** Session ID to continue an existing research session. */
+  sessionId?: string;
 }
 
 export interface ResearchResult {
@@ -129,6 +131,14 @@ export interface ResearchResult {
   /** Number of tool calls actually performed. */
   tools: number;
   sources: string[];
+  /** Session ID for continuing this research later. */
+  sessionId?: string;
+  /** @internal State for session persistence. */
+  _messages?: any[];
+  /** @internal State for session persistence. */
+  _sources?: Map<number, string>;
+  /** @internal State for session persistence. */
+  _nextSourceIndex?: number;
 }
 
 // ========== SearXNG ==========

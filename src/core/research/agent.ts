@@ -50,12 +50,14 @@ export interface AgentOptions {
   onProgress?: (progress: ResearchProgress) => void;
   streamAnswer?: boolean;
   searxngAvailable?: boolean;
+  /** Existing state to continue from a previous session. */
+  existingState?: AgentState;
 }
 
 /**
  * Internal agent state.
  */
-interface AgentState {
+export interface AgentState {
   messages: ChatCompletionMessageParam[];
   /** Number of reasoning rounds completed. */
   loopCount: number;
@@ -67,21 +69,35 @@ interface AgentState {
 }
 
 export async function runResearchAgent(options: AgentOptions): Promise<ResearchResult> {
-  const { openai, model, toolExecutor, query, minTools, maxLoops, logger, onProgress, streamAnswer } = options;
+  const { openai, model, toolExecutor, query, minTools, maxLoops, logger, onProgress, streamAnswer, existingState } = options;
 
   // Initialize state
-  const state: AgentState = {
-    messages: [
-      { role: 'system', content: buildSystemPrompt(minTools, maxLoops) },
-      { role: 'user', content: buildInitialUserPrompt(query) },
-    ],
-    loopCount: 0,
-    toolCount: 0,
-    sources: new Map(),
-    nextSourceIndex: 1,
-    pendingThinking: null,
-    pendingInformal: null,
-  };
+  let state: AgentState;
+  if (existingState) {
+    // Continue from existing session: reset counters but keep history
+    state = {
+      ...existingState,
+      loopCount: 0,
+      toolCount: 0,
+      pendingThinking: null,
+      pendingInformal: null,
+    };
+    // Append the new query as a user message
+    state.messages.push({ role: 'user', content: query });
+  } else {
+    state = {
+      messages: [
+        { role: 'system', content: buildSystemPrompt(minTools, maxLoops) },
+        { role: 'user', content: buildInitialUserPrompt(query) },
+      ],
+      loopCount: 0,
+      toolCount: 0,
+      sources: new Map(),
+      nextSourceIndex: 1,
+      pendingThinking: null,
+      pendingInformal: null,
+    };
+  }
 
   const tools = getResearchTools(options.searxngAvailable || false);
   let finalAnswer = '';
@@ -331,6 +347,10 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
     loops: state.loopCount,
     tools: state.toolCount,
     sources,
+    // Internal state for session persistence (not part of public API)
+    _messages: state.messages,
+    _sources: state.sources,
+    _nextSourceIndex: state.nextSourceIndex,
   };
 }
 
