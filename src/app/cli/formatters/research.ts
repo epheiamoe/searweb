@@ -1,4 +1,4 @@
-// src/app/cli/formatters/research.ts - Format research progress and results
+// src/app/cli/formatters/research.ts - Tree-style research progress and results
 
 import { ResearchProgress, ResearchResult } from '../../../core/types.js';
 import { renderMarkdown } from '../utils/markdown.js';
@@ -11,50 +11,178 @@ try {
   // chalk not available
 }
 
+// Color scheme
 const c = {
-  cyan: (s: string) => (chalk ? chalk.cyan(s) : s),
-  gray: (s: string) => (chalk ? chalk.gray(s) : s),
-  green: (s: string) => (chalk ? chalk.green(s) : s),
-  yellow: (s: string) => (chalk ? chalk.yellow(s) : s),
-  magenta: (s: string) => (chalk ? chalk.magenta(s) : s),
+  tree: (s: string) => (chalk ? chalk.dim(s) : s),
+  tool: (s: string) => (chalk ? chalk.cyan(s) : s),
+  search: (s: string) => (chalk ? chalk.cyan(s) : s),
+  fetch: (s: string) => (chalk ? chalk.cyan(s) : s),
+  thinking: (s: string) => (chalk ? chalk.white(s) : s),
+  informal: (s: string) => (chalk ? chalk.gray(s) : s),
+  meta: (s: string) => (chalk ? chalk.yellow(s) : s),
+  done: (s: string) => (chalk ? chalk.green(s) : s),
   bold: (s: string) => (chalk ? chalk.bold(s) : s),
+  gray: (s: string) => (chalk ? chalk.gray(s) : s),
 };
 
-const typeIcons: Record<string, string> = {
-  search: 'search',
-  fetch: 'page',
-  analyze: 'robot',
-  answer: 'speech_balloon',
-};
+/**
+ * Tree-style formatter for research progress.
+ *
+ * Design:
+ * - Collects all events within a single loop into a buffer
+ * - Flushes buffer when a new loop starts or research ends
+ * - Last line of each loop uses └─, others use ├─
+ * - Budget indicator shown at loop boundaries
+ */
+class TreeFormatter {
+  private currentLoop = 0;
+  private buffer: Array<{ type: string; text: string }> = [];
+  private hasShownHeader = false;
+  private query: string;
 
-const typeLabels: Record<string, string> = {
-  search: 'searching',
-  fetch: 'fetching',
-  analyze: 'analyzing',
-  answer: 'answering',
-};
-
-export function formatResearchProgress(progress: ResearchProgress): string {
-  const icon = typeIcons[progress.type] || 'bullet';
-  const label = typeLabels[progress.type] || progress.type;
-  const budgetInfo = c.gray(`[loop ${progress.loop}/${progress.totalLoops}, tools ${progress.tools}/${progress.minTools}]`);
-
-  if (progress.type === 'answer') {
-    return progress.message;
+  constructor(query: string) {
+    this.query = query;
   }
 
-  let dataInfo = '';
-  if (progress.data) {
-    if (progress.data.title) {
-      dataInfo = ` - ${progress.data.title}`;
-    } else if (progress.data.url) {
-      dataInfo = ` - ${progress.data.url}`;
+  /**
+   * Print the initial header.
+   */
+  printHeader(): void {
+    console.log(`▶ Research: ${this.query}`);
+  }
+
+  /**
+   * Process a progress event.
+   */
+  onProgress(progress: ResearchProgress): void {
+    // Detect loop transition
+    if (progress.loop !== this.currentLoop) {
+      this.flushBuffer();
+      this.currentLoop = progress.loop;
+    }
+
+    switch (progress.type) {
+      case 'thinking':
+        this.buffer.push({
+          type: 'thinking',
+          text: this.formatThinking(progress.message),
+        });
+        break;
+
+      case 'informal':
+        this.buffer.push({
+          type: 'informal',
+          text: this.formatInformal(progress.message),
+        });
+        break;
+
+      case 'search':
+      case 'fetch':
+        this.buffer.push({
+          type: 'tool',
+          text: this.formatTool(progress),
+        });
+        break;
+
+      case 'analyze':
+        // Budget indicator - goes into buffer like any other line
+        this.buffer.push({
+          type: 'meta',
+          text: this.formatBudget(progress),
+        });
+        break;
+
+      case 'answer':
+        // Flush any pending buffer first
+        this.flushBuffer();
+        // Print answer header if not already shown
+        if (!this.hasShownHeader) {
+          console.log('\n' + c.bold('─'.repeat(60)));
+          console.log(c.bold('ANSWER'));
+          console.log(c.bold('─'.repeat(60)) + '\n');
+          this.hasShownHeader = true;
+        }
+        // Stream the answer text
+        process.stdout.write(progress.message);
+        break;
     }
   }
 
-  return `${c.cyan(icon)} ${c.bold(label)} ${budgetInfo} ${progress.message}${c.gray(dataInfo)}`;
+  /**
+   * Flush the buffer and print all lines with correct tree connectors.
+   */
+  flushBuffer(): void {
+    if (this.buffer.length === 0) return;
+
+    for (let i = 0; i < this.buffer.length; i++) {
+      const isLast = i === this.buffer.length - 1;
+      const item = this.buffer[i];
+      const connector = isLast ? '  └─' : '  ├─';
+      const line = `${c.tree(connector)} ${item.text}`;
+      console.log(line);
+    }
+
+    this.buffer = [];
+  }
+
+  /**
+   * Print the final "Done" line with summary.
+   */
+  printDone(loops: number, tools: number, sourceCount: number): void {
+    this.flushBuffer();
+    // Ensure there's a newline before the Done line
+    console.log('');
+    const summary = `${loops} loops, ${tools} tools, ${sourceCount} sources`;
+    console.log(`  ${c.done('└─')} ${c.done('✓ Done')} ${c.gray(summary)}`);
+  }
+
+  // ─── Format helpers ───
+
+  private formatThinking(text: string): string {
+    return `${c.thinking('🤔')} ${c.thinking(text)}`;
+  }
+
+  private formatInformal(text: string): string {
+    return `${c.informal(text)}`;
+  }
+
+  private formatTool(progress: ResearchProgress): string {
+    const { message } = progress;
+    // message is already formatted by agent.ts (e.g. "🔍 DDG: ... → 10 results")
+    // Extract icon and rest
+    const iconMatch = message.match(/^(🔍|📄)\s*(.*)$/);
+    if (iconMatch) {
+      const icon = iconMatch[1];
+      const rest = iconMatch[2];
+      if (icon === '🔍') {
+        return `${c.search(icon)} ${c.search(rest)}`;
+      } else {
+        return `${c.fetch(icon)} ${c.fetch(rest)}`;
+      }
+    }
+    return c.tool(message);
+  }
+
+  private formatBudget(progress: ResearchProgress): string {
+    const { loop, totalLoops, tools, minTools } = progress;
+    const budget = `[loop ${loop}/${totalLoops} | tools ${tools}/${minTools}]`;
+    const status = tools >= minTools ? ' ✅ min reached' : '';
+    return c.meta(budget + status);
+  }
 }
 
+// ─── Exported functions ───
+
+/**
+ * Create a formatter instance for a research session.
+ */
+export function createResearchFormatter(query: string) {
+  return new TreeFormatter(query);
+}
+
+/**
+ * Legacy format function (kept for compatibility, but TreeFormatter is preferred).
+ */
 export function formatResearchResult(result: ResearchResult, jsonOutput: boolean = false): string {
   if (jsonOutput) {
     return JSON.stringify(result, null, 2);
@@ -74,7 +202,7 @@ export function formatResearchResult(result: ResearchResult, jsonOutput: boolean
     lines.push(c.bold('SOURCES'));
     lines.push('─'.repeat(60));
     for (let i = 0; i < result.sources.length; i++) {
-      lines.push(`${c.cyan(`${i + 1}.`)} ${result.sources[i]}`);
+      lines.push(`${c.tool(`${i + 1}.`)} ${result.sources[i]}`);
     }
   }
 

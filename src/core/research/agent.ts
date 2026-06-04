@@ -59,10 +59,11 @@ interface AgentState {
   messages: ChatCompletionMessageParam[];
   /** Number of reasoning rounds completed. */
   loopCount: number;
-  /** Number of individual tool calls executed. */
   toolCount: number;
-  sources: Map<number, string>; // index -> url mapping for citations
+  sources: Map<number, string>;
   nextSourceIndex: number;
+  pendingThinking: string | null;
+  pendingInformal: string | null;
 }
 
 export async function runResearchAgent(options: AgentOptions): Promise<ResearchResult> {
@@ -78,6 +79,8 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
     toolCount: 0,
     sources: new Map(),
     nextSourceIndex: 1,
+    pendingThinking: null,
+    pendingInformal: null,
   };
 
   const tools = getResearchTools(options.searxngAvailable || false);
@@ -118,8 +121,19 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
       throw new Error('LLM returned empty message');
     }
 
+    // Extract thinking content - cache it to emit with the correct loop
+    const thinkingContent = extractThinking(message);
+    if (thinkingContent) {
+      state.pendingThinking = thinkingContent;
+    }
+
     // Add assistant message to history
     state.messages.push(message);
+
+    // If there is content alongside tool_calls, cache as informal output
+    if (message.content && message.tool_calls && message.tool_calls.length > 0) {
+      state.pendingInformal = message.content;
+    }
 
     // Check if LLM wants to call tools
     if (message.tool_calls && message.tool_calls.length > 0) {
@@ -145,56 +159,84 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
       state.loopCount += 1; // Each reasoning round counts as 1 loop
       state.toolCount += requestedTools; // Each actual tool call counts
 
-      reportProgress('analyze', `🤖 Loop ${state.loopCount}/${maxLoops} (tools: ${state.toolCount}, min: ${minTools})`);
+      // Emit any cached thinking/informal from this loop's LLM response
+      if (state.pendingThinking) {
+        reportProgress('thinking', state.pendingThinking);
+        state.pendingThinking = null;
+      }
+      if (state.pendingInformal) {
+        reportProgress('informal', state.pendingInformal);
+        state.pendingInformal = null;
+      }
+
+      reportProgress('analyze', `[loop ${state.loopCount}/${maxLoops} | tools ${state.toolCount}/${minTools}]${state.toolCount >= minTools ? ' ✅ min reached' : ''}`);
 
       const toolResults = await Promise.all(
         message.tool_calls.map(async (toolCall) => {
           const { name, arguments: args } = parseToolCall(toolCall);
-          logger.info(`Tool call: ${name}(${JSON.stringify(args)})`);
+            logger.debug(`Tool call: ${name}(${JSON.stringify(args)})`);
 
           try {
             let resultText = '';
             let progressType: ResearchProgress['type'] = 'fetch';
             let progressMessage = '';
 
-            switch (name) {
-              case 'search_web_ddg':
-                progressType = 'search';
-                progressMessage = `🔍 DDG: "${args.query}"`;
-                const ddgResults = await toolExecutor.searchDDG(args.query, args.limit || 10);
-                resultText = formatSearchResults(ddgResults, state);
-                break;
+            let toolResult: { count?: number; chars?: number; error?: string } = {};
 
-              case 'search_web_searxng':
+            switch (name) {
+              case 'search_web_ddg': {
                 progressType = 'search';
-                progressMessage = `🔍 SearXNG: "${args.query}"`;
+                const ddgResults = await toolExecutor.searchDDG(args.query, args.limit || 10);
+                toolResult.count = ddgResults.length;
+                resultText = formatSearchResults(ddgResults, state);
+                progressMessage = `🔍 search ddg      "${args.query}"  limit:${args.limit || 10}  → ${toolResult.count} results`;
+                break;
+              }
+
+              case 'search_web_searxng': {
+                progressType = 'search';
                 if (!toolExecutor.searchSearxng) {
                   resultText = 'Error: SearXNG is not available.';
+                  progressMessage = `🔍 search searxng   "${args.query}"  → error: unavailable`;
                 } else {
                   const searxngResults = await toolExecutor.searchSearxng(args.query, args.limit || 10);
+                  toolResult.count = searxngResults.length;
                   resultText = formatSearchResults(searxngResults, state);
+                  progressMessage = `🔍 search searxng   "${args.query}"  limit:${args.limit || 10}  → ${toolResult.count} results`;
                 }
                 break;
+              }
 
-              case 'search_wikipedia':
+              case 'search_wikipedia': {
                 progressType = 'search';
-                progressMessage = `🔍 Wikipedia: "${args.query}"`;
                 const wikiResults = await toolExecutor.searchWikipedia(args.query, args.lang || 'en', args.limit || 5);
+                toolResult.count = wikiResults.length;
                 resultText = formatSearchResults(wikiResults, state);
+                progressMessage = `🔍 search wiki     "${args.query}"  limit:${args.limit || 5}  → ${toolResult.count} results`;
                 break;
+              }
 
-              case 'fetch_web_markdown':
+              case 'fetch_web_markdown': {
                 progressType = 'fetch';
-                progressMessage = `📄 Fetching: ${args.url}`;
                 const fetchResult = await toolExecutor.fetchWebMarkdown(args.url, {
                   withIndex: args.with_index || false,
                   cursor: args.cursor,
                 });
+                if (fetchResult.error) {
+                  toolResult.error = fetchResult.error;
+                  progressMessage = `📄 fetch            ${truncateUrl(args.url)}  → error: ${fetchResult.error}`;
+                } else {
+                  toolResult.chars = fetchResult.content.length;
+                  const sizeLabel = formatSize(toolResult.chars);
+                  progressMessage = `📄 fetch            ${truncateUrl(args.url)}  → ${sizeLabel}`;
+                }
                 resultText = formatFetchResult(fetchResult, state);
                 break;
+              }
 
               default:
                 resultText = `Error: Unknown tool "${name}"`;
+                progressMessage = `❓ unknown tool     "${name}"  → error`;
             }
 
             reportProgress(progressType, progressMessage, {
@@ -336,4 +378,60 @@ function formatFetchResult(result: FetchResult, state: AgentState): string {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Extract thinking/reasoning content from various LLM response formats.
+ * Models like DeepSeek, Claude, and some OpenAI-compatible APIs may
+ * expose reasoning in separate fields.
+ */
+function extractThinking(message: any): string | null {
+  // DeepSeek-style: reasoning_content
+  if (message.reasoning_content && typeof message.reasoning_content === 'string') {
+    return message.reasoning_content.trim() || null;
+  }
+
+  // Some providers use thinking or thought
+  if (message.thinking && typeof message.thinking === 'string') {
+    return message.thinking.trim() || null;
+  }
+
+  if (message.thought && typeof message.thought === 'string') {
+    return message.thought.trim() || null;
+  }
+
+  // Check for nested reasoning in provider-specific formats
+  if (message.providerSpecific?.reasoning && typeof message.providerSpecific.reasoning === 'string') {
+    return message.providerSpecific.reasoning.trim() || null;
+  }
+
+  return null;
+}
+
+/**
+ * Truncate URL for display (keep hostname + last path segment).
+ */
+function truncateUrl(url: string, maxLen: number = 35): string {
+  try {
+    const u = new URL(url);
+    const host = u.hostname;
+    const path = u.pathname;
+    const lastSeg = path.split('/').pop() || '';
+    let display = lastSeg ? `${host}/${lastSeg}` : host;
+    if (display.length > maxLen) {
+      display = display.slice(0, maxLen - 3) + '...';
+    }
+    return display;
+  } catch {
+    return url.length > maxLen ? url.slice(0, maxLen - 3) + '...' : url;
+  }
+}
+
+/**
+ * Format byte/char count to human-readable size.
+ */
+function formatSize(chars: number): string {
+  if (chars >= 1000000) return `${(chars / 1000000).toFixed(1)}M chars`;
+  if (chars >= 1000) return `${(chars / 1000).toFixed(1)}k chars`;
+  return `${chars} chars`;
 }

@@ -94,7 +94,7 @@ export const RESEARCH_LEVELS: ResearchLevel[] = [
 ];
 
 export interface ResearchProgress {
-  type: 'search' | 'fetch' | 'analyze' | 'answer';
+  type: 'search' | 'fetch' | 'analyze' | 'answer' | 'thinking' | 'informal';
   /** Current loop count (reasoning round). */
   loop: number;
   /** Maximum allowed loops. */
