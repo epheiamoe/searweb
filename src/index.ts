@@ -17,6 +17,7 @@ import { fetchWebMarkdown } from './tools/fetch.js';
 import { RESEARCH_LEVELS } from './types.js';
 import { conductResearch } from './llm/research.js';
 import { createServer as createHttpServer } from 'http';
+import { ensureSearxngRunning, isDockerAvailable, findExistingSearxng } from './docker/searxng.js';
 
 // Load configuration
 const config = loadConfig(process.argv[2]);
@@ -100,22 +101,80 @@ const tools: Tool[] = [
   },
 ];
 
-// Add SearXNG tool if configured and healthy
-if (config.searxngUrl) {
-  // We'll check health asynchronously and update the tool list
-  checkSearxngHealth().then(result => {
-    searxngHealthy = result.healthy;
+// SearXNG initialization: auto-start or use configured URL
+async function initializeSearxng(): Promise<void> {
+  // Case 1: Auto-start is enabled
+  if (config.searxngAutoStart) {
+    console.error('SearXNG auto-start enabled, checking Docker...');
+    const dockerAvailable = await isDockerAvailable();
+    
+    if (!dockerAvailable) {
+      console.error('Docker not available. SearXNG auto-start skipped.');
+      searxngChecked = true;
+      return;
+    }
+    
+    const result = await ensureSearxngRunning();
     searxngChecked = true;
+    
+    if (result.healthy) {
+      searxngHealthy = true;
+      // Update config with actual URL
+      if (config.searxngUrl !== result.url) {
+        config.searxngUrl = result.url;
+        console.error(`SearXNG is healthy at ${result.url} (${result.autoManaged ? 'auto-managed' : 'external'})`);
+      }
+    } else {
+      console.error(`SearXNG is not healthy at ${result.url}`);
+    }
+    return;
+  }
+  
+  // Case 2: URL is configured (manual or previously auto-managed)
+  if (config.searxngUrl) {
+    console.error(`Checking SearXNG at ${config.searxngUrl}...`);
+    const result = await checkSearxngHealth();
+    searxngChecked = true;
+    searxngHealthy = result.healthy;
+    
     if (result.healthy) {
       console.error(`SearXNG is healthy at ${result.url}`);
     } else {
       console.error(`SearXNG is not healthy: ${result.error}`);
     }
-  }).catch(err => {
-    searxngChecked = true;
-    console.error('SearXNG health check failed:', err);
-  });
+    return;
+  }
+  
+  // Case 3: Auto-discover existing container even without explicit config
+  console.error('Checking for existing SearXNG container...');
+  const dockerAvailable = await isDockerAvailable();
+  
+  if (dockerAvailable) {
+    const existing = await findExistingSearxng();
+    
+    if (existing && existing.status === 'running') {
+      console.error(`Found existing SearXNG container at ${existing.url}`);
+      config.searxngUrl = existing.url;
+      
+      const healthResult = await checkSearxngHealth();
+      searxngChecked = true;
+      searxngHealthy = healthResult.healthy;
+      
+      if (healthResult.healthy) {
+        console.error('SearXNG is healthy and ready to use');
+      } else {
+        console.error('SearXNG container found but not responding');
+      }
+      return;
+    }
+  }
+  
+  searxngChecked = true;
+  console.error('No SearXNG configuration found. search_web_searxng tool will not be available.');
 }
+
+// Start initialization (don't await, let it run in background)
+initializeSearxng();
 
 // Add LLM research tool if configured
 if (config.llm) {

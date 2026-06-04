@@ -40,6 +40,16 @@ function askYesNo(question, defaultValue = false) {
   });
 }
 
+async function configureSearxngManual(config) {
+  const searxngUrl = await ask('SearXNG URL', 'http://localhost:8080');
+  if (searxngUrl) {
+    config.searxngUrl = searxngUrl;
+    
+    const autoStart = await askYesNo('Auto-start SearXNG Docker container?', false);
+    config.searxngAutoStart = autoStart;
+  }
+}
+
 async function main() {
   console.log('🌐 Searweb Configuration Wizard\n');
   console.log('This wizard will help you configure searweb MCP server.\n');
@@ -76,19 +86,61 @@ async function main() {
   console.log('SearXNG is a privacy-respecting metasearch engine.');
   console.log('It provides more powerful search than DDG alone.\n');
 
-  const useSearxng = await askYesNo('Do you want to configure SearXNG?', false);
-  if (useSearxng) {
-    const searxngUrl = await ask('SearXNG URL', 'http://localhost:8080');
-    if (searxngUrl) {
-      config.searxngUrl = searxngUrl;
-      
-      const autoStart = await askYesNo('Auto-start SearXNG Docker container?', false);
-      config.searxngAutoStart = autoStart;
-      
-      if (autoStart) {
-        console.log('\n💡 To start SearXNG manually, run:');
-        console.log('   docker run -d -p 8080:8080 searxng/searxng');
+  // Try to auto-detect Docker and existing containers
+  let dockerAvailable = false;
+  let existingContainer = null;
+  
+  try {
+    const { isDockerAvailable, findExistingSearxng } = await import('../dist/docker/searxng.js');
+    dockerAvailable = await isDockerAvailable();
+    
+    if (dockerAvailable) {
+      existingContainer = await findExistingSearxng();
+    }
+  } catch {
+    // Dockerode not available or other error
+  }
+
+  if (existingContainer) {
+    console.log(`✅ Found existing SearXNG container: ${existingContainer.containerId.slice(0, 12)}`);
+    console.log(`   URL: ${existingContainer.url}`);
+    console.log(`   Status: ${existingContainer.status}\n`);
+    
+    const useExisting = await askYesNo('Use this container?', true);
+    if (useExisting) {
+      config.searxngUrl = existingContainer.url;
+      config.searxngAutoStart = false; // Already exists, don't need to auto-start
+    } else {
+      const configureManual = await askYesNo('Configure manually?', false);
+      if (configureManual) {
+        await configureSearxngManual(config);
       }
+    }
+  } else if (dockerAvailable) {
+    console.log('✅ Docker is available.');
+    console.log('❌ No existing SearXNG container found.\n');
+    
+    const autoStart = await askYesNo('Auto-create and manage SearXNG container?', true);
+    if (autoStart) {
+      config.searxngAutoStart = true;
+      // Don't set searxngUrl - it will be determined at runtime
+      console.log('   SearXNG will be auto-managed on MCP startup.');
+    } else {
+      const configureManual = await askYesNo('Configure manually?', false);
+      if (configureManual) {
+        await configureSearxngManual(config);
+      }
+    }
+  } else {
+    console.log('❌ Docker not available. SearXNG auto-management disabled.\n');
+    console.log('Options:');
+    console.log('  1. Install Docker Desktop for auto-management');
+    console.log('  2. Configure external SearXNG instance manually');
+    console.log('  3. Skip SearXNG (DDG search will still work)\n');
+    
+    const configureManual = await askYesNo('Configure external SearXNG URL?', false);
+    if (configureManual) {
+      await configureSearxngManual(config);
     }
   }
 
