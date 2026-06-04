@@ -121,11 +121,26 @@ export async function startExistingContainer(
 
   try {
     const container = docker.getContainer(containerId);
+
+    // First check if already running
+    const inspect = await container.inspect();
+    if (inspect.State.Running) {
+      const port = inspect.HostConfig.PortBindings?.['8080/tcp']?.[0]?.HostPort
+        || DEFAULT_PORT;
+      return {
+        url: `http://localhost:${port}`,
+        containerId,
+        status: 'running',
+        autoManaged: true,
+      };
+    }
+
+    // Start if not running
     await container.start();
 
-    // Inspect to get port mapping
-    const inspect = await container.inspect();
-    const port = inspect.HostConfig.PortBindings?.['8080/tcp']?.[0]?.HostPort
+    // Re-inspect to get port mapping
+    const inspectAfter = await container.inspect();
+    const port = inspectAfter.HostConfig.PortBindings?.['8080/tcp']?.[0]?.HostPort
       || DEFAULT_PORT;
 
     return {
@@ -134,7 +149,8 @@ export async function startExistingContainer(
       status: 'running',
       autoManaged: true,
     };
-  } catch {
+  } catch (err) {
+    console.error('Failed to start existing container:', (err as Error).message);
     return null;
   }
 }
