@@ -9,10 +9,11 @@ import {
   Logger,
 } from '../types.js';
 import OpenAI from 'openai';
+import { JinaClient } from '../fetch/jina-client.js';
+import { FetchService } from '../fetch/index.js';
 import { searchDDG } from '../search/ddg.js';
 import { searchWikipedia } from '../search/wikipedia.js';
-import { FetchService } from '../fetch/index.js';
-import { JinaClient } from '../fetch/jina-client.js';
+import { runResearchAgent, ToolExecutor } from './agent.js';
 
 export class ResearchService {
   private config: ServerConfig;
@@ -56,127 +57,24 @@ export class ResearchService {
       }
     }
 
-    const onProgress = options.onProgress;
-    const streamAnswer = options.streamAnswer || false;
+    // Create tool executor
+    const toolExecutor: ToolExecutor = {
+      searchDDG: (query: string, limit?: number) => searchDDG(this.jinaClient, query, limit),
+      searchWikipedia: (query: string, lang?: string, limit?: number) => searchWikipedia(query, lang, limit),
+      fetchWebMarkdown: (url: string, opts?: any) => this.fetchService.fetchWebMarkdown(url, opts),
+    };
 
-    // Step 1: Search
-    onProgress?.({
-      type: 'search',
-      step: 1,
-      totalSteps: maxSteps,
-      message: `🔍 Searching for "${options.query}"...`,
+    // Run agent loop
+    return runResearchAgent({
+      openai,
+      model: this.config.llm.model,
+      toolExecutor,
+      query: options.query,
+      minSteps,
+      maxSteps,
+      logger: this.logger,
+      onProgress: options.onProgress,
+      streamAnswer: options.streamAnswer,
     });
-
-    const searchResults = await searchDDG(this.jinaClient, options.query, 5);
-    this.logger.info(`Found ${searchResults.length} search results`);
-
-    onProgress?.({
-      type: 'search',
-      step: 2,
-      totalSteps: maxSteps,
-      message: `Found ${searchResults.length} search results`,
-    });
-
-    // Step 2: Fetch top results
-    const sources: string[] = [];
-    let combinedContent = '';
-    const fetchLimit = Math.min(3, searchResults.length);
-
-    for (let i = 0; i < fetchLimit; i++) {
-      const result = searchResults[i];
-      sources.push(result.url);
-
-      onProgress?.({
-        type: 'fetch',
-        step: 2 + i,
-        totalSteps: maxSteps,
-        message: `📄 Fetching [${i + 1}/${fetchLimit}] ${result.title}`,
-        data: { url: result.url, title: result.title },
-      });
-
-      try {
-        const fetched = await this.fetchService.fetchWebMarkdown(result.url, { withIndex: false });
-        combinedContent += `\n\n## ${result.title}\n${result.snippet}\n${fetched.content.slice(0, 3000)}`;
-      } catch (e) {
-        this.logger.warn(`Failed to fetch ${result.url}:`, (e as Error).message);
-        combinedContent += `\n\n## ${result.title}\n${result.snippet}`;
-      }
-    }
-
-    // Step 3: Analyze with LLM
-    const analysisStep = 2 + fetchLimit;
-    onProgress?.({
-      type: 'analyze',
-      step: analysisStep,
-      totalSteps: maxSteps,
-      message: '🤖 Analyzing with AI...',
-    });
-
-    const prompt = `Research question: ${options.query}\n\nSearch results:\n${combinedContent}\n\nPlease provide a comprehensive answer based on the search results above. Include citations to the sources.`;
-
-    if (streamAnswer && onProgress) {
-      // Stream the answer
-      const stream = await openai.chat.completions.create({
-        model: this.config.llm.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a research assistant. Provide accurate, well-sourced answers based on the provided search results.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 2000,
-        stream: true,
-      });
-
-      let fullAnswer = '';
-      for await (const chunk of stream) {
-        const content = chunk.choices[0]?.delta?.content || '';
-        if (content) {
-          fullAnswer += content;
-          onProgress({
-            type: 'answer',
-            step: analysisStep + 1,
-            totalSteps: maxSteps,
-            message: content,
-            data: { content },
-          });
-        }
-      }
-
-      return {
-        answer: fullAnswer,
-        steps: Math.min(fetchLimit + 2, maxSteps),
-        sources,
-      };
-    } else {
-      // Non-streaming
-      const response = await openai.chat.completions.create({
-        model: this.config.llm.model,
-        messages: [
-          {
-            role: 'system',
-            content: 'You are a research assistant. Provide accurate, well-sourced answers based on the provided search results.',
-          },
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: 2000,
-      });
-
-      const answer = response.choices[0]?.message?.content || 'No answer generated';
-
-      onProgress?.({
-        type: 'answer',
-        step: analysisStep + 1,
-        totalSteps: maxSteps,
-        message: 'Answer complete',
-      });
-
-      return {
-        answer,
-        steps: Math.min(fetchLimit + 2, maxSteps),
-        sources,
-      };
-    }
   }
 }
