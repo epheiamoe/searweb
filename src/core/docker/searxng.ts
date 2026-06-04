@@ -272,9 +272,9 @@ export async function ensureSearxngRunning(logger: Logger): Promise<SearxngStatu
   const existing = await findExistingSearxng();
 
   if (existing) {
-    logger.info(`Found existing SearXNG container: ${existing.containerId.slice(0, 12)}`);
+    logger.info(`Found existing SearXNG container: ${existing.containerId.slice(0, 12)} (status: ${existing.status})`);
 
-    if (existing.status === 'running') {
+    if (existing.status?.toLowerCase() === 'running') {
       logger.info(`Container is already running at ${existing.url}`);
 
       // Verify it's healthy
