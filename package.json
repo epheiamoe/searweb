@@ -1,7 +1,7 @@
 {
   "name": "searweb",
-  "version": "0.1.0",
-  "description": "Unified web search MCP server with DDG, SearXNG, Wikipedia, and LLM research",
+  "version": "0.2.0",
+  "description": "Unified web search with DDG, SearXNG, Wikipedia, and LLM research. Dual-mode: MCP Server + CLI.",
   "main": "dist/index.js",
   "type": "module",
   "bin": {

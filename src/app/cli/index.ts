@@ -14,7 +14,7 @@ const program = new Command();
 program
   .name('searweb')
   .description('Unified web search CLI with DDG, SearXNG, Wikipedia, and LLM research')
-  .version('0.1.0');
+  .version('0.2.0');
 
 program
   .command('server')
