@@ -16,7 +16,7 @@ try {
 
 export async function researchCommand(
   query: string,
-  options: { level?: string; maxSteps?: string; minSteps?: string; json?: boolean; config?: string }
+  options: { level?: string; maxLoops?: string; minTools?: string; json?: boolean; config?: string }
 ) {
   const spinner = createSpinner(`Starting research: "${query}"...`).start();
 
@@ -36,16 +36,16 @@ export async function researchCommand(
     spinner.stop();
 
     const level = (options.level as 'quick' | 'standard' | 'deep') || 'standard';
-    const maxSteps = options.maxSteps ? parseInt(options.maxSteps, 10) : undefined;
-    const minSteps = options.minSteps ? parseInt(options.minSteps, 10) : undefined;
+    const maxLoops = options.maxLoops ? parseInt(options.maxLoops, 10) : undefined;
+    const minTools = options.minTools ? parseInt(options.minTools, 10) : undefined;
 
     if (options.json) {
       // JSON mode: no streaming, just output final result
       const result = await core.conductResearch({
         query,
         level,
-        maxSteps,
-        minSteps,
+        maxLoops,
+        minTools,
         streamAnswer: false,
       });
       console.log(JSON.stringify(result, null, 2));
@@ -60,8 +60,8 @@ export async function researchCommand(
     const result = await core.conductResearch({
       query,
       level,
-      maxSteps,
-      minSteps,
+      maxLoops,
+      minTools,
       streamAnswer: true,
       onProgress: (progress: ResearchProgress) => {
         if (progress.type === 'answer') {

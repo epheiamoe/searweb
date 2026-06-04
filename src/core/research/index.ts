@@ -45,18 +45,18 @@ export class ResearchService {
       baseURL: this.config.llm.baseURL,
     });
 
-    // Determine step limits
-    let minSteps = 4;
-    let maxSteps = 10;
+    // Determine budget limits
+    let minTools = 5;
+    let maxLoops = 8;
 
-    if (options.maxSteps !== undefined) {
-      maxSteps = options.maxSteps;
-      minSteps = options.minSteps || 1;
+    if (options.maxLoops !== undefined) {
+      maxLoops = options.maxLoops;
+      minTools = options.minTools || 2;
     } else {
       const level = RESEARCH_LEVELS.find(l => l.name === (options.level || 'standard'));
       if (level) {
-        minSteps = level.minSteps;
-        maxSteps = level.maxSteps;
+        minTools = level.minTools;
+        maxLoops = level.maxLoops;
       }
     }
 
@@ -78,8 +78,8 @@ export class ResearchService {
       model: this.config.llm.model,
       toolExecutor,
       query: options.query,
-      minSteps,
-      maxSteps,
+      minTools,
+      maxLoops,
       logger: this.logger,
       onProgress: options.onProgress,
       streamAnswer: options.streamAnswer,

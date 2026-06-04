@@ -80,21 +80,29 @@ export interface FetchOptions {
 // ========== Research ==========
 export interface ResearchLevel {
   name: string;
-  minSteps: number;
-  maxSteps: number;
+  /** Minimum number of tool calls required before finishing research. */
+  minTools: number;
+  /** Maximum number of research loops (reasoning rounds) allowed. */
+  maxLoops: number;
   description: string;
 }
 
 export const RESEARCH_LEVELS: ResearchLevel[] = [
-  { name: 'quick', minSteps: 1, maxSteps: 5, description: 'Quick search with 1-5 tool calls' },
-  { name: 'standard', minSteps: 4, maxSteps: 10, description: 'Standard research with 4-10 tool calls' },
-  { name: 'deep', minSteps: 6, maxSteps: 20, description: 'Deep research with 6-20 tool calls' },
+  { name: 'quick', minTools: 2, maxLoops: 3, description: 'Quick research with at least 2 tool calls, up to 3 loops' },
+  { name: 'standard', minTools: 5, maxLoops: 8, description: 'Standard research with at least 5 tool calls, up to 8 loops' },
+  { name: 'deep', minTools: 8, maxLoops: 15, description: 'Deep research with at least 8 tool calls, up to 15 loops' },
 ];
 
 export interface ResearchProgress {
   type: 'search' | 'fetch' | 'analyze' | 'answer';
-  step: number;
-  totalSteps: number;
+  /** Current loop count (reasoning round). */
+  loop: number;
+  /** Maximum allowed loops. */
+  totalLoops: number;
+  /** Current tool call count. */
+  tools: number;
+  /** Minimum required tool calls. */
+  minTools: number;
   message: string;
   data?: {
     url?: string;
@@ -106,15 +114,20 @@ export interface ResearchProgress {
 export interface ResearchOptions {
   query: string;
   level?: 'quick' | 'standard' | 'deep';
-  maxSteps?: number;
-  minSteps?: number;
+  /** Override: maximum number of research loops. */
+  maxLoops?: number;
+  /** Override: minimum number of tool calls. */
+  minTools?: number;
   onProgress?: (progress: ResearchProgress) => void;
   streamAnswer?: boolean;
 }
 
 export interface ResearchResult {
   answer: string;
-  steps: number;
+  /** Number of research loops actually performed. */
+  loops: number;
+  /** Number of tool calls actually performed. */
+  tools: number;
   sources: string[];
 }
 

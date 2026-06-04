@@ -37,10 +37,9 @@ const typeLabels: Record<string, string> = {
 export function formatResearchProgress(progress: ResearchProgress): string {
   const icon = typeIcons[progress.type] || 'bullet';
   const label = typeLabels[progress.type] || progress.type;
-  const stepInfo = c.gray(`[${progress.step}/${progress.totalSteps}]`);
+  const budgetInfo = c.gray(`[loop ${progress.loop}/${progress.totalLoops}, tools ${progress.tools}/${progress.minTools}]`);
 
   if (progress.type === 'answer') {
-    // For answer type, just return the content to stream
     return progress.message;
   }
 
@@ -53,7 +52,7 @@ export function formatResearchProgress(progress: ResearchProgress): string {
     }
   }
 
-  return `${c.cyan(icon)} ${c.bold(label)} ${stepInfo} ${progress.message}${c.gray(dataInfo)}`;
+  return `${c.cyan(icon)} ${c.bold(label)} ${budgetInfo} ${progress.message}${c.gray(dataInfo)}`;
 }
 
 export function formatResearchResult(result: ResearchResult, jsonOutput: boolean = false): string {
@@ -79,7 +78,7 @@ export function formatResearchResult(result: ResearchResult, jsonOutput: boolean
     }
   }
 
-  lines.push(c.gray(`\nCompleted in ${result.steps} steps.`));
+  lines.push(c.gray(`\nCompleted: ${result.loops} loops, ${result.tools} tools.`));
 
   return lines.join('\n');
 }

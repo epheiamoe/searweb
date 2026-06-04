@@ -87,7 +87,7 @@ export function getTools(hasLLM: boolean): Tool[] {
   if (hasLLM) {
     tools.push({
       name: 'llm_research',
-      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minSteps}-${l.maxSteps} steps)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer.`,
+      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minTools} tools, ${l.maxLoops} loops)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer.`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -97,15 +97,15 @@ export function getTools(hasLLM: boolean): Tool[] {
           },
           level: {
             type: 'string',
-            description: 'Research level: quick (1-5 steps), standard (4-10 steps), deep (6-20 steps)',
+            description: 'Research level: quick (2 tools/3 loops), standard (5 tools/8 loops), deep (8 tools/15 loops)',
             enum: ['quick', 'standard', 'deep'],
             default: 'standard',
           },
-          max_steps: {
+          max_loops: {
             type: 'number',
-            description: 'Override: maximum number of tool calls (overrides level)',
+            description: 'Override: maximum number of research loops (overrides level)',
           },
-          min_steps: {
+          min_tools: {
             type: 'number',
             description: 'Override: minimum number of tool calls (overrides level)',
           },

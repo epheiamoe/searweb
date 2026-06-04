@@ -77,8 +77,8 @@ program
   .description('Conduct AI-powered research with streaming')
   .argument('<query>', 'Research question or topic')
   .option('--level <level>', 'Research level: quick, standard, deep', 'standard')
-  .option('--max-steps <number>', 'Override maximum number of steps')
-  .option('--min-steps <number>', 'Override minimum number of steps')
+  .option('--max-loops <number>', 'Override maximum number of research loops')
+  .option('--min-tools <number>', 'Override minimum number of tool calls')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output final result as JSON (disables streaming)')
   .action(async (query: string, options: any) => {

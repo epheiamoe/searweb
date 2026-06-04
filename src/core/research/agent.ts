@@ -1,4 +1,9 @@
 // src/core/research/agent.ts - Agent loop with dual counters and tool execution
+//
+// Budget model (fixed semantics):
+//   loopCount: reasoning rounds (upper limit: maxLoops)
+//   toolCount: actual tool calls (lower limit: minTools)
+//   Invariant: toolCount >= loopCount
 
 import OpenAI from 'openai';
 import { ChatCompletionMessageParam } from 'openai/resources/chat/completions.js';
@@ -13,7 +18,7 @@ import {
 import {
   buildSystemPrompt,
   wrapToolResult,
-  TOOL_LIMIT_ERROR,
+  LOOP_LIMIT_ERROR,
   buildForceContinueMessage,
   buildInitialUserPrompt,
 } from './prompts.js';
@@ -37,8 +42,10 @@ export interface AgentOptions {
   model: string;
   toolExecutor: ToolExecutor;
   query: string;
-  minSteps: number;
-  maxSteps: number;
+  /** Minimum number of tool calls before research can finish. */
+  minTools: number;
+  /** Maximum number of reasoning loops (LLM turns with tool calls). */
+  maxLoops: number;
   logger: Logger;
   onProgress?: (progress: ResearchProgress) => void;
   streamAnswer?: boolean;
@@ -50,23 +57,25 @@ export interface AgentOptions {
  */
 interface AgentState {
   messages: ChatCompletionMessageParam[];
-  minCount: number; // reasoning rounds
-  maxCount: number; // actual tool calls
+  /** Number of reasoning rounds completed. */
+  loopCount: number;
+  /** Number of individual tool calls executed. */
+  toolCount: number;
   sources: Map<number, string>; // index -> url mapping for citations
   nextSourceIndex: number;
 }
 
 export async function runResearchAgent(options: AgentOptions): Promise<ResearchResult> {
-  const { openai, model, toolExecutor, query, minSteps, maxSteps, logger, onProgress, streamAnswer } = options;
+  const { openai, model, toolExecutor, query, minTools, maxLoops, logger, onProgress, streamAnswer } = options;
 
   // Initialize state
   const state: AgentState = {
     messages: [
-      { role: 'system', content: buildSystemPrompt(minSteps, maxSteps) },
+      { role: 'system', content: buildSystemPrompt(minTools, maxLoops) },
       { role: 'user', content: buildInitialUserPrompt(query) },
     ],
-    minCount: 0,
-    maxCount: 0,
+    loopCount: 0,
+    toolCount: 0,
     sources: new Map(),
     nextSourceIndex: 1,
   };
@@ -75,13 +84,25 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
   let finalAnswer = '';
 
   // Progress helper
-  function reportProgress(type: ResearchProgress['type'], step: number, message: string, data?: ResearchProgress['data']) {
-    onProgress?.({ type, step, totalSteps: maxSteps, message, data });
+  function reportProgress(
+    type: ResearchProgress['type'],
+    message: string,
+    data?: ResearchProgress['data']
+  ) {
+    onProgress?.({
+      type,
+      loop: state.loopCount,
+      totalLoops: maxLoops,
+      tools: state.toolCount,
+      minTools,
+      message,
+      data,
+    });
   }
 
   // Agent loop
   while (true) {
-    logger.debug(`Agent loop: minCount=${state.minCount}, maxCount=${state.maxCount}`);
+    logger.debug(`Agent loop: loopCount=${state.loopCount}, toolCount=${state.toolCount}`);
 
     // Call LLM
     const response = await openai.chat.completions.create({
@@ -102,30 +123,29 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
 
     // Check if LLM wants to call tools
     if (message.tool_calls && message.tool_calls.length > 0) {
-      // Check max_count limit BEFORE executing
-      const toolCount = message.tool_calls.length;
-      if (state.maxCount + toolCount > maxSteps) {
-        // Over limit - return error to LLM but continue loop
-        logger.warn(`Tool call limit would be exceeded: ${state.maxCount} + ${toolCount} > ${maxSteps}`);
+      const requestedTools = message.tool_calls.length;
+
+      // Check loop limit BEFORE executing (loopCount would increase by 1)
+      if (state.loopCount + 1 > maxLoops) {
+        logger.warn(`Loop limit reached: ${state.loopCount} + 1 > ${maxLoops}`);
 
         for (const toolCall of message.tool_calls) {
           state.messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
-            content: TOOL_LIMIT_ERROR,
+            content: LOOP_LIMIT_ERROR,
           });
         }
 
-        reportProgress('analyze', state.minCount + 1, '⚠️ Tool limit reached. Generating final answer...');
-        // Continue loop - LLM will receive error and should output final answer
+        reportProgress('analyze', '⚠️ Loop limit reached. Generating final answer...');
         continue;
       }
 
       // Execute tools
-      state.minCount += 1; // Each reasoning round counts as 1
-      state.maxCount += toolCount; // Each actual tool call counts
+      state.loopCount += 1; // Each reasoning round counts as 1 loop
+      state.toolCount += requestedTools; // Each actual tool call counts
 
-      reportProgress('analyze', state.minCount, `🤖 Reasoning round ${state.minCount} (tools: ${toolCount})`);
+      reportProgress('analyze', `🤖 Loop ${state.loopCount}/${maxLoops} (tools: ${state.toolCount}, min: ${minTools})`);
 
       const toolResults = await Promise.all(
         message.tool_calls.map(async (toolCall) => {
@@ -177,7 +197,7 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
                 resultText = `Error: Unknown tool "${name}"`;
             }
 
-            reportProgress(progressType, state.minCount, progressMessage, {
+            reportProgress(progressType, progressMessage, {
               url: args.url,
               title: args.query,
             });
@@ -185,10 +205,10 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
             // Wrap with budget info
             const wrapped = wrapToolResult(
               resultText,
-              state.minCount,
-              state.maxCount,
-              minSteps,
-              maxSteps
+              state.toolCount,
+              state.loopCount,
+              minTools,
+              maxLoops
             );
 
             return {
@@ -199,7 +219,7 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
             logger.error(`Tool execution failed: ${name}`, (error as Error).message);
             return {
               tool_call_id: toolCall.id,
-              content: `Error executing ${name}: ${(error as Error).message}\n\n---\n\n**Research Budget Status**\n- min_count: ${state.minCount}\n- max_count: ${state.maxCount}`,
+              content: `Error executing ${name}: ${(error as Error).message}\n\n---\n\n**Research Budget Status**\n- loop_count: ${state.loopCount}\n- tool_count: ${state.toolCount}`,
             };
           }
         })
@@ -214,11 +234,11 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
         });
       }
 
-      // Check if we need to force continue (min_count < minSteps)
-      if (state.minCount < minSteps) {
+      // Check if we need to force continue (toolCount < minTools AND we still have loops left)
+      if (state.toolCount < minTools && state.loopCount < maxLoops) {
         state.messages.push({
           role: 'user',
-          content: buildForceContinueMessage(state.minCount, minSteps),
+          content: buildForceContinueMessage(state.toolCount, minTools),
         });
       }
 
@@ -229,12 +249,12 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
     // LLM provided final answer (no tool calls)
     finalAnswer = message.content || '';
 
-    // Check if min_count is sufficient
-    if (state.minCount < minSteps) {
-      logger.warn(`LLM tried to finish early: minCount=${state.minCount} < minSteps=${minSteps}`);
+    // Check if toolCount is sufficient
+    if (state.toolCount < minTools && state.loopCount < maxLoops) {
+      logger.warn(`LLM tried to finish early: toolCount=${state.toolCount} < minTools=${minTools}`);
       state.messages.push({
         role: 'user',
-        content: buildForceContinueMessage(state.minCount, minSteps),
+        content: buildForceContinueMessage(state.toolCount, minTools),
       });
       continue; // Force LLM to continue
     }
@@ -245,14 +265,15 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
 
   // Stream final answer if requested
   if (streamAnswer && onProgress && finalAnswer) {
-    // We already have the answer, so just emit it chunk by chunk for UX
     const chunks = finalAnswer.split(/(?=[.!?]\s+|[\n])/);
     for (const chunk of chunks) {
       if (chunk.trim()) {
         onProgress({
           type: 'answer',
-          step: state.minCount,
-          totalSteps: maxSteps,
+          loop: state.loopCount,
+          totalLoops: maxLoops,
+          tools: state.toolCount,
+          minTools,
           message: chunk,
           data: { content: chunk },
         });
@@ -265,7 +286,8 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
 
   return {
     answer: finalAnswer,
-    steps: state.minCount,
+    loops: state.loopCount,
+    tools: state.toolCount,
     sources,
   };
 }
@@ -301,7 +323,6 @@ function formatFetchResult(result: FetchResult, state: AgentState): string {
   }
 
   const index = state.nextSourceIndex;
-  // Use the URL from the result if available, otherwise we'll track it differently
   state.nextSourceIndex += 1;
 
   const lines: string[] = [

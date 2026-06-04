@@ -81,8 +81,8 @@ export async function handleToolCall(
       const researchResult = await core.conductResearch({
         query: args.query,
         level: args.level,
-        maxSteps: args.max_steps,
-        minSteps: args.min_steps,
+        maxLoops: args.max_loops,
+        minTools: args.min_tools,
       });
       return {
         content: [

@@ -2,9 +2,16 @@
 
 /**
  * System prompt for Searweb Research Agent.
- * Based on Perplexity-style research with mandatory tool usage and inline citations.
+ *
+ * Budget model:
+ * - loopCount: number of reasoning rounds (each time LLM responds and decides to call tools).
+ *   Upper limit: maxLoops. Once reached, no more tools can be called.
+ * - toolCount: number of individual tool calls executed.
+ *   Lower limit: minTools. You must call at least this many tools before finishing.
+ *
+ * Invariant: toolCount >= loopCount (each loop calls at least 1 tool).
  */
-export function buildSystemPrompt(minSteps: number, maxSteps: number): string {
+export function buildSystemPrompt(minTools: number, maxLoops: number): string {
   return `You are Searweb Research, an AI research assistant. Your sole purpose is to answer user questions by gathering information through tool calls.
 
 ## Absolute Rules
@@ -15,9 +22,11 @@ export function buildSystemPrompt(minSteps: number, maxSteps: number): string {
 5. **CITE EVERYTHING**: Every sentence containing factual information must have an inline citation.
 
 ## Research Budget
-Each tool result includes budget information in the "extra" field:
-- **min_count**: Increases by 1 per reasoning round (regardless of parallel tool count). Lower limit: ${minSteps}. You should continue researching until this reaches at least ${minSteps}.
-- **max_count**: Increases by N per round where N = number of tools called. Upper limit: ${maxSteps}. You must stop calling tools when this reaches ${maxSteps}.
+Each tool result includes budget information:
+- **loop_count**: Increases by 1 per reasoning round. Upper limit: ${maxLoops}. You CANNOT call tools once this reaches ${maxLoops}.
+- **tool_count**: Increases by N per round where N = number of tools called. Lower limit: ${minTools}. You MUST call at least ${minTools} tools before providing a final answer.
+
+Key invariant: tool_count >= loop_count (each round calls at least 1 tool).
 
 ## Citation Format
 Use Markdown superscript citations: [^1^], [^2^], [^3^], etc.
@@ -30,7 +39,7 @@ Use Markdown superscript citations: [^1^], [^2^], [^3^], etc.
 1. **Initial search**: Call search tools to understand the topic landscape
 2. **Deep fetch**: Use fetch tool to read key sources in detail
 3. **Follow-up**: Call additional searches if gaps remain
-4. **Synthesize**: When information is sufficient, provide comprehensive answer
+4. **Synthesize**: When you have called at least ${minTools} tools, provide comprehensive answer
 
 ## Response Format
 1. Start with 1-2 sentence direct answer to the core question
@@ -51,8 +60,8 @@ Use Markdown superscript citations: [^1^], [^2^], [^3^], etc.
 ## Mathematical Expressions
 Use LaTeX with \\( \\) for inline. Never use $ or $$.
 
-## When Forced to Finish
-If you receive an error stating you have reached the tool call limit, you MUST immediately provide your final answer based on all information gathered. If information is incomplete, explicitly state what is missing. Do not guess.`;
+## When Loop Limit is Reached
+If you receive an error stating the loop limit is reached, you MUST immediately provide your final answer based on all information gathered. If information is incomplete, explicitly state what is missing. Do not guess.`;
 }
 
 /**
@@ -60,34 +69,44 @@ If you receive an error stating you have reached the tool call limit, you MUST i
  */
 export function wrapToolResult(
   result: string,
-  minCount: number,
-  maxCount: number,
-  minLimit: number,
-  maxLimit: number
+  toolCount: number,
+  loopCount: number,
+  minTools: number,
+  maxLoops: number
 ): string {
-  return `${result}
+  const lines = [
+    result,
+    '',
+    '---',
+    '',
+    '**Research Budget Status**',
+    `- loop_count: ${loopCount} (reasoning rounds, upper limit: ${maxLoops})`,
+    `- tool_count: ${toolCount} (tool calls, lower limit: ${minTools})`,
+  ];
 
----
+  if (loopCount >= maxLoops) {
+    lines.push('\n**WARNING: You have reached the loop limit. STOP calling tools and provide your final answer immediately.**');
+  }
 
-**Research Budget Status**
-- min_count: ${minCount} (reasoning rounds, lower limit: ${minLimit})
-- max_count: ${maxCount} (tool calls, upper limit: ${maxLimit})
-${maxCount >= maxLimit ? '\n**WARNING: You have reached the tool call limit. Stop calling tools and provide your final answer immediately.**' : ''}
-${minCount < minLimit ? `\n**NOTE: Research depth is still insufficient (minimum ${minLimit} rounds required). Please continue exploring.**` : ''}`;
+  if (toolCount < minTools) {
+    lines.push(`\n**NOTE: You have only called ${toolCount} tools. Minimum required is ${minTools}. Please continue exploring.**`);
+  }
+
+  return lines.join('\n');
 }
 
 /**
- * Error message when max_count exceeds limit.
+ * Error message when loop limit is reached.
  */
-export const TOOL_LIMIT_ERROR = `ERROR: You have reached the maximum tool call limit (max_count >= max_limit). You MUST stop calling tools immediately.
+export const LOOP_LIMIT_ERROR = `ERROR: You have reached the maximum loop limit (loop_count >= max_loops). You MUST stop calling tools immediately.
 
-Provide your final answer based on all information gathered so far. If the information is incomplete, explicitly state what is missing. Do not guess or fabricate information.`;
+Provide your final answer based on all information gathered so far. If information is incomplete, explicitly state what is missing. Do not guess or fabricate information.`;
 
 /**
- * User prompt inserted when min_count is below threshold after tool execution.
+ * User prompt inserted when toolCount is below threshold after tool execution.
  */
-export function buildForceContinueMessage(currentMin: number, requiredMin: number): string {
-  return `The research depth is still insufficient. You have completed ${currentMin} research rounds, but the minimum required is ${requiredMin}. Please continue exploring with additional searches or fetches before providing a final answer.`;
+export function buildForceContinueMessage(currentTools: number, requiredTools: number): string {
+  return `You have only called ${currentTools} tools so far, but the minimum required is ${requiredTools}. Please continue exploring with additional searches or fetches before providing a final answer.`;
 }
 
 /**
