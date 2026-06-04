@@ -40,13 +40,21 @@ program
 program
   .command('xng')
   .description('Search using SearXNG (auto-starts container if configured)')
-  .argument('<query>', 'Search query')
+  .argument('[query]', 'Search query (omit with --status for diagnostics)')
   .option('-l, --limit <number>', 'Maximum number of results', '10')
   .option('-p, --page <number>', 'Page number for pagination', '1')
+  .option('--status', 'Show SearXNG engine status (diagnostics)')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output as JSON')
-  .action(async (query: string, options: any) => {
-    await xngCommand(query, options);
+  .action(async (query: string | undefined, options: any) => {
+    if (options.status) {
+      await xngCommand('', { ...options, status: true });
+    } else if (!query) {
+      console.error('Error: Query is required. Use --status for diagnostics.');
+      process.exit(1);
+    } else {
+      await xngCommand(query, options);
+    }
   });
 
 program

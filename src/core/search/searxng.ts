@@ -2,6 +2,37 @@
 
 import { SearchResult } from '../types.js';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+/**
+ * Retry a search operation with delay.
+ */
+async function retrySearch<T>(
+  operation: () => Promise<T>,
+  shouldRetry: (error: any) => boolean
+): Promise<T> {
+  let lastError: any;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!shouldRetry(error)) {
+        throw error;
+      }
+
+      if (attempt < MAX_RETRIES) {
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+      }
+    }
+  }
+
+  throw lastError;
+}
+
 export async function searchSearxng(
   searxngUrl: string,
   query: string,
@@ -17,38 +48,51 @@ export async function searchSearxng(
     searchUrl += `&pageno=${page}`;
   }
 
-  const response = await fetch(searchUrl, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'searweb/1.0',
+  return retrySearch(
+    async () => {
+      const response = await fetch(searchUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'searweb/1.0',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`SearXNG search failed: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json() as {
+        results?: Array<{
+          title?: string;
+          url?: string;
+          content?: string;
+          snippet?: string;
+          engines?: string[];
+        }>
+      };
+
+      if (!data.results || !Array.isArray(data.results)) {
+        return [];
+      }
+
+      return data.results.slice(0, limit).map((result) => ({
+        title: result.title || '',
+        url: result.url || '',
+        snippet: result.content || result.snippet || '',
+        // Show underlying engines, not just "searxng"
+        source: result.engines?.join(', ') || 'searxng',
+      }));
     },
-  });
-
-  if (!response.ok) {
-    throw new Error(`SearXNG search failed: ${response.status} ${response.statusText}`);
-  }
-
-  const data = await response.json() as {
-    results?: Array<{
-      title?: string;
-      url?: string;
-      content?: string;
-      snippet?: string;
-      engines?: string[];
-    }>
-  };
-
-  if (!data.results || !Array.isArray(data.results)) {
-    return [];
-  }
-
-  return data.results.slice(0, limit).map((result) => ({
-    title: result.title || '',
-    url: result.url || '',
-    snippet: result.content || result.snippet || '',
-    // Show underlying engines, not just "searxng"
-    source: result.engines?.join(', ') || 'searxng',
-  }));
+    (error) => {
+      // Retry on network errors or HTTP 5xx / 403
+      const msg = (error as Error).message || '';
+      return msg.includes('fetch') ||
+        msg.includes('network') ||
+        msg.includes('ECONNREFUSED') ||
+        msg.includes('5') ||
+        msg.includes('403');
+    }
+  );
 }
 
 export async function checkSearxngHealth(searxngUrl?: string): Promise<{ healthy: boolean; url?: string; error?: string }> {

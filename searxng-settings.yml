@@ -6,6 +6,11 @@ search:
   formats:
     - html
     - json
+engines:
+  - name: duckduckgo
+    disabled: true
+  - name: startpage
+    disabled: true
 server:
   secret_key: "searweb-local-secret-key-change-in-production"
   limiter: false

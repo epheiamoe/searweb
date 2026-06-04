@@ -3,6 +3,35 @@
 import { SearchResult } from '../types.js';
 import { JinaClient } from '../fetch/jina-client.js';
 
+const MAX_RETRIES = 3;
+const RETRY_DELAY_MS = 1000;
+
+/**
+ * Retry a search operation with exponential backoff.
+ */
+async function retrySearch<T>(
+  operation: () => Promise<T>,
+  shouldRetry: (result: T) => boolean,
+  logger?: { warn: (msg: string) => void }
+): Promise<T> {
+  let lastResult: T | undefined;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    lastResult = await operation();
+
+    if (!shouldRetry(lastResult)) {
+      return lastResult;
+    }
+
+    if (attempt < MAX_RETRIES) {
+      logger?.warn(`Search returned empty, retrying (${attempt}/${MAX_RETRIES})...`);
+      await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS * attempt));
+    }
+  }
+
+  return lastResult!;
+}
+
 export async function searchDDG(
   jinaClient: JinaClient,
   query: string,
@@ -14,10 +43,15 @@ export async function searchDDG(
     searchUrl += `&s=${offset}`;
   }
 
-  const response = await jinaClient.fetch(searchUrl);
-  const content = typeof response.content === 'string' ? response.content : '';
-
-  return parseDDGResults(content, limit);
+  return retrySearch(
+    async () => {
+      const response = await jinaClient.fetch(searchUrl);
+      const content = typeof response.content === 'string' ? response.content : '';
+      return parseDDGResults(content, limit);
+    },
+    (results) => results.length === 0, // Retry if empty
+    // No logger needed - retry is silent
+  );
 }
 
 function parseDDGResults(content: string, limit: number): SearchResult[] {
