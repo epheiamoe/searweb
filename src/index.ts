@@ -2,6 +2,10 @@
 // src/index.ts - Unified entry point for searweb
 // Routes between MCP server mode and CLI mode based on arguments
 
+function isConfigFile(arg: string): boolean {
+  return arg.endsWith('.json') || arg.endsWith('.jsonc');
+}
+
 async function main() {
   const args = process.argv.slice(2);
 
@@ -9,6 +13,13 @@ async function main() {
   if (args.length === 0) {
     const { runMcpApp } = await import('./app/mcp/index.js');
     await runMcpApp();
+    return;
+  }
+
+  // If first argument is a config file, run MCP server with that config
+  if (args.length === 1 && isConfigFile(args[0])) {
+    const { runMcpApp } = await import('./app/mcp/index.js');
+    await runMcpApp(args[0]);
     return;
   }
 
