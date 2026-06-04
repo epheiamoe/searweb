@@ -75,7 +75,8 @@ export async function researchCommand(
     });
 
     console.log('\n');
-    console.log(formatResearchResult(result, false));
+    // Don't re-render the full answer since it was already streamed
+    console.log(formatResearchResult({ ...result, answer: '' }, false));
   } catch (error) {
     console.error(`Research failed: ${(error as Error).message}`);
     process.exit(1);

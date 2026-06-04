@@ -12,13 +12,16 @@ export function loadConfig(configPath?: string): ServerConfig {
     cacheTtlSeconds: 1800, // 30 minutes
   };
 
-  // Load from config file if provided
-  if (configPath && existsSync(configPath)) {
+  // Determine config path: explicit arg > default config.json
+  const targetPath = configPath || 'config.json';
+
+  // Load from config file if it exists
+  if (existsSync(targetPath)) {
     try {
-      const fileConfig = JSON.parse(readFileSync(resolve(configPath), 'utf-8'));
+      const fileConfig = JSON.parse(readFileSync(resolve(targetPath), 'utf-8'));
       Object.assign(config, fileConfig);
     } catch (e) {
-      console.error(`Failed to load config from ${configPath}:`, e);
+      console.error(`Failed to load config from ${targetPath}:`, e);
     }
   }
 

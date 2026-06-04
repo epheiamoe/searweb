@@ -138,7 +138,7 @@ export class ResearchService {
             type: 'answer',
             step: analysisStep + 1,
             totalSteps: maxSteps,
-            message: 'Streaming answer...',
+            message: content,
             data: { content },
           });
         }

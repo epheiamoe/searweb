@@ -12,9 +12,14 @@ import { CoreServices } from '../../core/types.js';
 import { getTools, getSearxngTool } from './tools.js';
 import { handleToolCall } from './handlers.js';
 
+export interface SearxngState {
+  healthy: boolean;
+  checked: boolean;
+}
+
 export async function startMcpServer(
   core: CoreServices,
-  searxngHealthy: boolean
+  searxngState: SearxngState
 ): Promise<void> {
   const config = core.config;
   const hasLLM = !!config.llm;
@@ -35,7 +40,7 @@ export async function startMcpServer(
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const availableTools = [...baseTools];
-    if (searxngHealthy) {
+    if (searxngState.healthy) {
       availableTools.push(getSearxngTool());
     }
     return { tools: availableTools };
@@ -43,7 +48,7 @@ export async function startMcpServer(
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
-    return handleToolCall(core, searxngHealthy, name, args || {});
+    return handleToolCall(core, searxngState.healthy, name, args || {});
   });
 
   if (config.transport === 'sse') {

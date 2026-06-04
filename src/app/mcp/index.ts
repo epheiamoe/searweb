@@ -2,22 +2,34 @@
 
 import { createCore, loadConfig } from '../../core/index.js';
 import { initializeSearxng } from './searxng-init.js';
-import { startMcpServer } from './server.js';
+import { startMcpServer, SearxngState } from './server.js';
 
 export async function runMcpApp(configPath?: string): Promise<void> {
   const config = loadConfig(configPath);
   const core = createCore(config);
 
-  // Initialize SearXNG in background
-  core.logger.info('Initializing SearXNG...');
-  const searxngResult = await initializeSearxng(core);
+  // Shared state for SearXNG health (mutable, updated in background)
+  const searxngState: SearxngState = {
+    healthy: false,
+    checked: false,
+  };
 
-  if (searxngResult.healthy) {
-    core.logger.info(`SearXNG is healthy at ${searxngResult.url}`);
-  } else if (searxngResult.checked) {
-    core.logger.warn('SearXNG is not available. search_web_searxng tool will not be exposed.');
-  }
+  // Start SearXNG initialization in the background (non-blocking)
+  // MCP server must start immediately to respond to OpenCode's initialize
+  initializeSearxng(core).then((result) => {
+    searxngState.healthy = result.healthy;
+    searxngState.checked = true;
 
-  // Start MCP server
-  await startMcpServer(core, searxngResult.healthy);
+    if (result.healthy) {
+      core.logger.info(`SearXNG is healthy at ${result.url}`);
+    } else if (result.checked) {
+      core.logger.warn('SearXNG is not available. search_web_searxng tool will not be exposed.');
+    }
+  }).catch((err) => {
+    core.logger.error('SearXNG initialization failed:', err.message);
+    searxngState.checked = true;
+  });
+
+  // Start MCP server immediately (don't wait for SearXNG)
+  await startMcpServer(core, searxngState);
 }

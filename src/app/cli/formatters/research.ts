@@ -63,10 +63,12 @@ export function formatResearchResult(result: ResearchResult, jsonOutput: boolean
 
   const lines: string[] = [];
 
-  lines.push(c.bold('\n' + '─'.repeat(60)));
-  lines.push(c.bold('ANSWER'));
-  lines.push('─'.repeat(60) + '\n');
-  lines.push(renderMarkdown(result.answer));
+  if (result.answer) {
+    lines.push(c.bold('\n' + '─'.repeat(60)));
+    lines.push(c.bold('ANSWER'));
+    lines.push('─'.repeat(60) + '\n');
+    lines.push(renderMarkdown(result.answer));
+  }
 
   if (result.sources.length > 0) {
     lines.push('\n' + c.bold('─'.repeat(60)));
