@@ -2,7 +2,8 @@
 
 import { ServerConfig } from './types.js';
 import { readFileSync, existsSync } from 'fs';
-import { resolve } from 'path';
+import { resolve, dirname, join } from 'path';
+import { fileURLToPath } from 'url';
 
 export function loadConfig(configPath?: string): ServerConfig {
   const config: ServerConfig = {
@@ -12,16 +13,39 @@ export function loadConfig(configPath?: string): ServerConfig {
     cacheTtlSeconds: 1800, // 30 minutes
   };
 
-  // Determine config path: explicit arg > default config.json
-  const targetPath = configPath || 'config.json';
+  // Determine config paths to try
+  const pathsToTry: string[] = [];
 
-  // Load from config file if it exists
-  if (existsSync(targetPath)) {
+  if (configPath) {
+    // Explicit config path provided via -c flag
+    pathsToTry.push(configPath);
+  } else {
+    // Try current working directory first
+    pathsToTry.push(resolve('config.json'));
+
+    // Also try the directory where this module is installed (for global installs)
+    // This handles the case where user runs searweb from anywhere
     try {
-      const fileConfig = JSON.parse(readFileSync(resolve(targetPath), 'utf-8'));
-      Object.assign(config, fileConfig);
-    } catch (e) {
-      console.error(`Failed to load config from ${targetPath}:`, e);
+      const __filename = fileURLToPath(import.meta.url);
+      const moduleDir = dirname(__filename);
+      // Go up from dist/core/ to package root
+      const packageRoot = resolve(moduleDir, '..', '..');
+      pathsToTry.push(join(packageRoot, 'config.json'));
+    } catch {
+      // If import.meta.url is not available, skip
+    }
+  }
+
+  // Load from first existing config file
+  for (const targetPath of pathsToTry) {
+    if (existsSync(targetPath)) {
+      try {
+        const fileConfig = JSON.parse(readFileSync(targetPath, 'utf-8'));
+        Object.assign(config, fileConfig);
+        break; // Stop at first successful load
+      } catch (e) {
+        console.error(`Failed to load config from ${targetPath}:`, e);
+      }
     }
   }
 
