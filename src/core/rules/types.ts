@@ -1,4 +1,4 @@
-// src/rules-engine/types.ts - Rule engine type definitions
+// src/core/rules/types.ts - Rule engine type definitions
 
 export interface RuleFile {
   name: string;

@@ -1,12 +1,12 @@
-// src/search/searxng.ts - SearXNG search implementation with container management
+// src/core/search/searxng.ts - SearXNG search implementation with container management
 
 import { SearchResult } from '../types.js';
-import { getConfig } from '../config.js';
 
-export async function searchSearxng(query: string, limit: number = 10): Promise<SearchResult[]> {
-  const config = getConfig();
-  const searxngUrl = config.searxngUrl;
-
+export async function searchSearxng(
+  searxngUrl: string,
+  query: string,
+  limit: number = 10
+): Promise<SearchResult[]> {
   if (!searxngUrl) {
     throw new Error('SearXNG URL not configured');
   }
@@ -37,10 +37,7 @@ export async function searchSearxng(query: string, limit: number = 10): Promise<
   }));
 }
 
-export async function checkSearxngHealth(): Promise<{ healthy: boolean; url?: string; error?: string }> {
-  const config = getConfig();
-  const searxngUrl = config.searxngUrl;
-
+export async function checkSearxngHealth(searxngUrl?: string): Promise<{ healthy: boolean; url?: string; error?: string }> {
   if (!searxngUrl) {
     return { healthy: false, error: 'SearXNG URL not configured' };
   }

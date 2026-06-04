@@ -1,8 +1,12 @@
-// src/search/wikipedia.ts - Wikipedia API search implementation
+// src/core/search/wikipedia.ts - Wikipedia API search implementation
 
 import { SearchResult } from '../types.js';
 
-export async function searchWikipedia(query: string, lang: string = 'en', limit: number = 5): Promise<SearchResult[]> {
+export async function searchWikipedia(
+  query: string,
+  lang: string = 'en',
+  limit: number = 5
+): Promise<SearchResult[]> {
   const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*&srlimit=${limit}`;
 
   const response = await fetch(searchUrl);
@@ -20,7 +24,7 @@ export async function searchWikipedia(query: string, lang: string = 'en', limit:
   return data.query.search.map((item) => ({
     title: item.title,
     url: `https://${lang}.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g, '_'))}`,
-    snippet: item.snippet.replace(/<[^\u003e]*>/g, ''), // Remove HTML tags from snippet
+    snippet: item.snippet.replace(/<[^>]*>/g, ''), // Remove HTML tags from snippet
     source: 'wikipedia',
   }));
 }

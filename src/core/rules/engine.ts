@@ -1,4 +1,4 @@
-// src/rules-engine/engine.ts - Rule engine implementation
+// src/core/rules/engine.ts - Rule engine implementation
 
 import {
   RuleFile,

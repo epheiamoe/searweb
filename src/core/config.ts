@@ -1,15 +1,10 @@
-// src/config.ts - Configuration management
+// src/core/config.ts - Pure configuration loading (no singleton)
 
 import { ServerConfig } from './types.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve } from 'path';
-import { pathToFileURL } from 'url';
-
-let _config: ServerConfig | null = null;
 
 export function loadConfig(configPath?: string): ServerConfig {
-  if (_config) return _config;
-
   const config: ServerConfig = {
     transport: 'stdio',
     ssePort: 3000,
@@ -20,7 +15,7 @@ export function loadConfig(configPath?: string): ServerConfig {
   // Load from config file if provided
   if (configPath && existsSync(configPath)) {
     try {
-      const fileConfig = JSON.parse(readFileSync(configPath, 'utf-8'));
+      const fileConfig = JSON.parse(readFileSync(resolve(configPath), 'utf-8'));
       Object.assign(config, fileConfig);
     } catch (e) {
       console.error(`Failed to load config from ${configPath}:`, e);
@@ -54,17 +49,5 @@ export function loadConfig(configPath?: string): ServerConfig {
     };
   }
 
-  _config = config;
   return config;
-}
-
-export function getConfig(): ServerConfig {
-  if (!_config) {
-    return loadConfig();
-  }
-  return _config;
-}
-
-export function resetConfig(): void {
-  _config = null;
 }

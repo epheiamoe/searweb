@@ -1,13 +1,16 @@
-// src/search/ddg.ts - DuckDuckGo HTML search implementation
+// src/core/search/ddg.ts - DuckDuckGo HTML search implementation
 
 import { SearchResult } from '../types.js';
-import { JinaClient } from '../jina/client.js';
+import { JinaClient } from '../fetch/jina-client.js';
 
-export async function searchDDG(query: string, limit: number = 10): Promise<SearchResult[]> {
-  const jina = new JinaClient();
+export async function searchDDG(
+  jinaClient: JinaClient,
+  query: string,
+  limit: number = 10
+): Promise<SearchResult[]> {
   const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
 
-  const response = await jina.fetch(searchUrl);
+  const response = await jinaClient.fetch(searchUrl);
   const content = typeof response.content === 'string' ? response.content : '';
 
   return parseDDGResults(content, limit);

@@ -1,12 +1,17 @@
-// src/jina/client.ts - Jina.ai client with multi-key rotation and local fallback
+// src/core/fetch/jina-client.ts - Jina.ai client with multi-key rotation and local fallback
 
-import { getConfig } from '../config.js';
 import TurndownService from 'turndown';
 
-interface JinaResponse {
+export interface JinaResponse {
   title?: string;
   url?: string;
   content?: string;
+}
+
+export interface JinaClientOptions {
+  apiKeys?: string[];
+  disableRemote?: boolean;
+  localFallback?: boolean;
 }
 
 export class JinaClient {
@@ -14,13 +19,11 @@ export class JinaClient {
   private currentKeyIndex: number = 0;
   private disableRemote: boolean;
   private localFallback: boolean;
-  private baseUrl: string = 'https://r.jina.ai/http://';
 
-  constructor() {
-    const config = getConfig();
-    this.keys = config.jinaApiKeys || [];
-    this.disableRemote = config.jinaDisableRemote || false;
-    this.localFallback = config.jinaLocalFallback !== false; // default true
+  constructor(options: JinaClientOptions = {}) {
+    this.keys = options.apiKeys || [];
+    this.disableRemote = options.disableRemote || false;
+    this.localFallback = options.localFallback !== false; // default true
   }
 
   async fetch(url: string): Promise<JinaResponse> {

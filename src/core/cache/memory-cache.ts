@@ -1,4 +1,4 @@
-// src/cache/memory-cache.ts - LRU memory cache with TTL
+// src/core/cache/memory-cache.ts - LRU memory cache with TTL
 
 interface CacheEntry<T> {
   value: T;
