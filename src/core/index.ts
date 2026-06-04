@@ -29,7 +29,7 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
     localFallback: config.jinaLocalFallback,
   });
   const fetchService = new FetchService(config, log);
-  const researchService = new ResearchService(config, log);
+  const researchService = new ResearchService(config, log, fetchService, jinaClient);
 
   let _searxngUrl: string | undefined = config.searxngUrl;
 

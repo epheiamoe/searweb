@@ -4,6 +4,8 @@ import { FetchResult, FetchOptions, ServerConfig, Logger } from '../types.js';
 import { JinaClient } from './jina-client.js';
 import { RuleEngine } from '../rules/engine.js';
 import { MemoryCache } from '../cache/memory-cache.js';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
 
 const TRUNCATE_SIZE = 10000;
 
@@ -11,6 +13,19 @@ interface CacheEntry {
   content: string;
   url: string;
   source: string;
+}
+
+function getProjectRoot(): string {
+  try {
+    // In ESM, get current file path and resolve to project root
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    // src/core/fetch/index.ts -> project root
+    return join(__dirname, '..', '..', '..');
+  } catch {
+    // Fallback to cwd
+    return process.cwd();
+  }
 }
 
 export class FetchService {
@@ -29,7 +44,7 @@ export class FetchService {
       disableRemote: config.jinaDisableRemote,
       localFallback: config.jinaLocalFallback,
     });
-    this.ruleEngine = new RuleEngine('./rules');
+    this.ruleEngine = new RuleEngine(join(getProjectRoot(), 'rules'));
     this.logger = logger;
   }
 

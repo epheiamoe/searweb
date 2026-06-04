@@ -21,15 +21,15 @@ export class ResearchService {
   private fetchService: FetchService;
   private jinaClient: JinaClient;
 
-  constructor(config: ServerConfig, logger: Logger) {
+  constructor(config: ServerConfig, logger: Logger, existingFetchService?: FetchService, existingJinaClient?: JinaClient) {
     this.config = config;
     this.logger = logger;
-    this.jinaClient = new JinaClient({
+    this.jinaClient = existingJinaClient || new JinaClient({
       apiKeys: config.jinaApiKeys,
       disableRemote: config.jinaDisableRemote,
       localFallback: config.jinaLocalFallback,
     });
-    this.fetchService = new FetchService(config, logger);
+    this.fetchService = existingFetchService || new FetchService(config, logger);
   }
 
   async conductResearch(options: ResearchOptions): Promise<ResearchResult> {
