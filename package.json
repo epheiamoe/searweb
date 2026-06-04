@@ -11,6 +11,7 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
+    "setup": "node scripts/setup.js",
     "lint": "echo 'No linter configured'",
     "test": "echo 'No tests configured'"
   },

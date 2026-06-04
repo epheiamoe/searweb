@@ -1,0 +1,26 @@
+{
+  "_comment": "Searweb MCP Server Configuration Template",
+  "_doc": "Copy this file to config.json and fill in your values",
+
+  "transport": "stdio",
+  "ssePort": 3000,
+
+  "jinaApiKeys": [
+    "jina_your_api_key_here"
+  ],
+  "jinaDisableRemote": false,
+  "jinaLocalFallback": true,
+
+  "searxngUrl": "http://localhost:8080",
+  "searxngAutoStart": false,
+
+  "llm": {
+    "provider": "openai",
+    "apiKey": "sk-your_openai_api_key_here",
+    "baseURL": "https://api.openai.com/v1",
+    "model": "gpt-4o-mini"
+  },
+
+  "cacheMaxSize": 100,
+  "cacheTtlSeconds": 1800
+}
