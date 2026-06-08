@@ -77,22 +77,25 @@ export async function handleToolCall(
         ],
       };
 
-    case 'llm_research':
-      const researchResult = await core.conductResearch({
+    case 'llm_research': {
+      const rawResult = await core.conductResearch({
         query: args.query,
         level: args.level,
         maxLoops: args.max_loops,
         minTools: args.min_tools,
         sessionId: args.session_id,
       });
+      // Strip internal fields before exposing to AI
+      const { _messages, _sources, _nextSourceIndex, ...result } = rawResult;
       return {
         content: [
           {
             type: 'text',
-            text: JSON.stringify(researchResult, null, 2),
+            text: JSON.stringify(result, null, 2),
           },
         ],
       };
+    }
 
     default:
       return {

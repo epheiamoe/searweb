@@ -7,7 +7,7 @@ export function getTools(hasLLM: boolean): Tool[] {
   const tools: Tool[] = [
     {
       name: 'search_web_ddg',
-      description: 'Search the web using DuckDuckGo HTML interface. Returns structured search results with title, URL, and snippet. Supports pagination via offset.',
+      description: 'Search the web using DuckDuckGo HTML interface. Returns structured search results with title, URL, and snippet. Supports pagination via offset. Use this as the default search tool for general web queries when you need current information, news, or diverse sources.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -31,7 +31,7 @@ export function getTools(hasLLM: boolean): Tool[] {
     },
     {
       name: 'fetch_web_markdown',
-      description: 'Fetch a webpage and convert it to clean markdown. Automatically removes noise (navigation, ads, etc.) based on site-specific rules. Supports pagination via cursor.',
+      description: 'Fetch a webpage and convert it to clean markdown. Automatically removes noise (navigation, ads, etc.) based on site-specific rules. Supports pagination via cursor. Use this AFTER finding a relevant URL via search to read the full content of a page. The result includes a "source" field indicating which fetch method was used ("jina" for jina.ai proxy, "original" for direct fetch).',
       inputSchema: {
         type: 'object',
         properties: {
@@ -59,7 +59,7 @@ export function getTools(hasLLM: boolean): Tool[] {
     },
     {
       name: 'search_wikipedia',
-      description: 'Search Wikipedia for articles. Returns structured results with title, URL, and snippet.',
+      description: 'Search Wikipedia for articles. Returns structured results with title, URL, and snippet. Use this for factual, encyclopedic, or conceptual queries where you need authoritative, well-structured information. Best for: definitions, historical facts, scientific concepts, biographies.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -125,7 +125,7 @@ export function getTools(hasLLM: boolean): Tool[] {
 export function getSearxngTool(): Tool {
   return {
     name: 'search_web_searxng',
-    description: 'Search the web using SearXNG instance. Returns structured search results with title, URL, and snippet. Shows underlying search engines as source. Supports pagination via page number. Requires SearXNG to be configured and healthy.',
+    description: 'Search the web using SearXNG metasearch instance. Returns aggregated results from multiple engines (Google, Bing, DuckDuckGo, Wikipedia, etc.) with title, URL, and snippet. Shows underlying engines as source. Supports pagination via page number. Use this when you want broader coverage across multiple search engines in a single query. NOTE: This tool may not be available if SearXNG is not configured or healthy; if unavailable, fall back to search_web_ddg.',
     inputSchema: {
       type: 'object',
       properties: {
