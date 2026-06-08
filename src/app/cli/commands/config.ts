@@ -215,34 +215,69 @@ export async function configCommand() {
           if (key === 'searweb') delete opencodeConfig.mcp[key];
         });
 
-        // Add new configuration
+        // Build environment variables from collected config
+        const environment: Record<string, string> = {};
+        if (config.llm?.apiKey) {
+          environment.OPENAI_API_KEY = config.llm.apiKey;
+          environment.OPENAI_MODEL = config.llm.model || 'gpt-4o-mini';
+        }
+        if (config.jinaApiKeys?.length) {
+          environment.JINA_API_KEYS = config.jinaApiKeys.join(',');
+        }
+        if (config.searxngAutoStart) {
+          environment.SEARXNG_AUTO_START = 'true';
+        }
+
+        // Add new configuration with environment variables (preferred over config.json path)
         opencodeConfig.mcp.searweb = {
           type: 'local',
-          command: ['node', `${rootDir}\\dist\\index.js`, `${rootDir}\\config.json`],
+          command: ['npx', '-y', 'searweb'],
           enabled: true,
+          ...(Object.keys(environment).length > 0 ? { environment } : {}),
+          timeout: 30000,
         };
 
         writeFileSync(opencodeConfigPath, JSON.stringify(opencodeConfig, null, 2));
         console.log('OpenCode configuration updated!');
         console.log(`File: ${opencodeConfigPath}`);
+        console.log('\nGenerated config uses environment variables for API keys.');
+        console.log('You can also use: opencode mcp add  (interactive setup)');
       }
     } catch (e: any) {
       console.error('Failed to update OpenCode config:', e.message);
       console.log('\nManual configuration:');
-      console.log(`Add to your opencode.jsonc:`);
+      console.log('Add to your opencode.json or opencode.jsonc:');
+      const manualEnv: Record<string, string> = {};
+      if (config.llm?.apiKey) {
+        manualEnv.OPENAI_API_KEY = config.llm.apiKey;
+        manualEnv.OPENAI_MODEL = config.llm.model || 'gpt-4o-mini';
+      }
+      if (config.jinaApiKeys?.length) {
+        manualEnv.JINA_API_KEYS = config.jinaApiKeys.join(',');
+      }
+      if (config.searxngAutoStart) {
+        manualEnv.SEARXNG_AUTO_START = 'true';
+      }
       console.log(
         JSON.stringify(
           {
-            searweb: {
-              type: 'local',
-              command: ['node', `${rootDir}\\dist\\index.js`, `${rootDir}\\config.json`],
-              enabled: true,
+            mcp: {
+              searweb: {
+                type: 'local',
+                command: ['npx', '-y', 'searweb'],
+                enabled: true,
+                ...(Object.keys(manualEnv).length > 0 ? { environment: manualEnv } : {}),
+                timeout: 30000,
+              },
             },
           },
           null,
           2
         )
       );
+      console.log('\nTip: Use "opencode mcp add" for interactive setup.');
+      console.log('Verify: opencode mcp list');
+      console.log('Debug: opencode mcp debug searweb');
     }
   }
 
