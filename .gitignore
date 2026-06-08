@@ -6,3 +6,5 @@ dist/
 .env.local
 config.json
 out-of-date/
+.config/
+coverage/
