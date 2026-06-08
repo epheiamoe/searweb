@@ -13,7 +13,9 @@
     "start": "node dist/index.js",
     "setup": "node scripts/setup.js",
     "lint": "echo 'No linter configured'",
-    "test": "echo 'No tests configured'"
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "mcp",
@@ -41,7 +43,9 @@
     "@types/dockerode": "^4.0.1",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.14.0",
-    "typescript": "^5.8.3"
+    "@vitest/coverage-v8": "^4.1.8",
+    "typescript": "^5.8.3",
+    "vitest": "^4.1.8"
   },
   "engines": {
     "node": ">=20"
