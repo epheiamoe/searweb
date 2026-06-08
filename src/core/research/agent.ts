@@ -24,6 +24,7 @@ import {
   buildInitialUserPrompt,
 } from './prompts.js';
 import { getResearchTools, parseToolCall } from './tools.js';
+import { synthesizeAnswer } from './answer.js';
 
 /**
  * Tool execution interface provided by the caller.
@@ -106,7 +107,6 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
   }
 
   const tools = getResearchTools(options.searxngAvailable || false);
-  let finalAnswer = '';
 
   // Progress helper
   function reportProgress(
@@ -252,7 +252,7 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
                   const sizeLabel = formatSize(toolResult.chars);
                   progressMessage = `📄 fetch            ${truncateUrl(args.url)}  → ${sizeLabel}`;
                 }
-                resultText = formatFetchResult(fetchResult, state);
+                resultText = formatFetchResult(fetchResult, args.url, state);
                 break;
               }
 
@@ -310,8 +310,8 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
       continue;
     }
 
-    // LLM provided final answer (no tool calls)
-    finalAnswer = message.content || '';
+    // LLM provided content without tool calls — this is a signal to finish
+    // but we will ignore this inline answer and do a proper synthesis pass.
 
     // Check if toolCount is sufficient
     if (state.toolCount < minTools && state.loopCount < maxLoops) {
@@ -323,36 +323,47 @@ export async function runResearchAgent(options: AgentOptions): Promise<ResearchR
       continue; // Force LLM to continue
     }
 
-    // Valid final answer
+    // Valid final answer signal — break and synthesize
     break;
   }
 
-  // Stream final answer if requested
-  if (streamAnswer && onProgress && finalAnswer) {
-    const chunks = finalAnswer.split(/(?=[.!?]\s+|[\n])/);
-    for (const chunk of chunks) {
-      if (chunk.trim()) {
-        onProgress({
-          type: 'answer',
-          loop: state.loopCount,
-          totalLoops: maxLoops,
-          tools: state.toolCount,
-          minTools,
-          message: chunk,
-          data: { content: chunk },
-        });
-      }
-    }
+  // ========================================================================
+  // Synthesis Phase: generate polished answer from all gathered research
+  // ========================================================================
+  reportProgress('analyze', '🧠 Synthesizing final answer from all sources...');
+
+  const synthesisResult = await synthesizeAnswer({
+    openai,
+    model,
+    query,
+    messages: state.messages,
+    sources: state.sources,
+    logger,
+    // Note: We intentionally do NOT pass onProgress here.
+    // Streaming chunk-by-chunk would show original citation numbers
+    // before renumbering, causing a mismatch with SOURCES.
+    // Instead, we emit the complete renumbered answer after synthesis.
+  });
+
+  if (onProgress) {
+    // Emit the complete renumbered answer (streaming disabled to ensure
+    // citation numbers match the deduplicated SOURCES list)
+    onProgress({
+      type: 'answer',
+      loop: state.loopCount,
+      totalLoops: maxLoops,
+      tools: state.toolCount,
+      minTools,
+      message: synthesisResult.answer,
+      data: { content: synthesisResult.answer },
+    });
   }
 
-  // Collect sources
-  const sources = Array.from(state.sources.values());
-
   return {
-    answer: finalAnswer,
+    answer: synthesisResult.answer,
     loops: state.loopCount,
     tools: state.toolCount,
-    sources,
+    sources: synthesisResult.sources,
     // Internal state for session persistence (not part of public API)
     _messages: state.messages,
     _sources: state.sources,
@@ -384,13 +395,15 @@ function formatSearchResults(results: SearchResult[], state: AgentState): string
 
 /**
  * Format fetch result for LLM with source indexing.
+ * @param url The original URL being fetched (for citation purposes)
  */
-function formatFetchResult(result: FetchResult, state: AgentState): string {
+function formatFetchResult(result: FetchResult, url: string, state: AgentState): string {
   if (result.error) {
     return `Error fetching page: ${result.error}`;
   }
 
   const index = state.nextSourceIndex;
+  state.sources.set(index, url);
   state.nextSourceIndex += 1;
 
   const lines: string[] = [

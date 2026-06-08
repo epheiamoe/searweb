@@ -122,6 +122,9 @@ export function getResearchTools(searxngAvailable: boolean = false): ChatComplet
  * Extract tool call arguments from LLM response.
  */
 export function parseToolCall(toolCall: any): { name: string; arguments: any } {
+  if (!toolCall.function?.name) {
+    throw new Error('Tool call missing function name');
+  }
   return {
     name: toolCall.function.name,
     arguments: JSON.parse(toolCall.function.arguments),
