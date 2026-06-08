@@ -1,6 +1,6 @@
 // src/core/search/searxng-status.ts - SearXNG engine status checker
 
-import Docker from 'dockerode';
+import { execSync } from 'child_process';
 
 export interface EngineStatus {
   name: string;
@@ -17,19 +17,45 @@ export interface SearxngFullStatus {
   errors: string[];
 }
 
-let _docker: Docker | null = null;
-
-function getDocker(): Docker | null {
-  if (_docker) return _docker;
+/**
+ * Check if Docker is available.
+ */
+function isDockerAvailable(): boolean {
   try {
-    if (process.platform === 'win32') {
-      _docker = new Docker({ socketPath: '\\\\.\\pipe\\docker_engine' });
-    } else {
-      _docker = new Docker({ socketPath: '/var/run/docker.sock' });
-    }
-    return _docker;
+    execSync('docker ps', { stdio: 'ignore' });
+    return true;
   } catch {
-    return null;
+    return false;
+  }
+}
+
+/**
+ * Check if SearXNG container is running.
+ */
+function isContainerRunning(): boolean {
+  try {
+    const result = execSync(
+      'docker inspect -f "{{.State.Running}}" searweb-searxng',
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+    return result.trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Get container logs via docker CLI.
+ * Avoids dockerode's multiplexed stream parsing issues.
+ */
+function getContainerLogs(tail: number = 200): string {
+  try {
+    return execSync(
+      `docker logs --tail=${tail} searweb-searxng 2>&1`,
+      { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }
+    );
+  } catch {
+    return '';
   }
 }
 
@@ -55,126 +81,91 @@ export async function getSearxngStatus(searxngUrl: string): Promise<SearxngFullS
     status.errors.push(`Health check failed: ${(e as Error).message}`);
   }
 
-  // Check container status via Docker
-  const docker = getDocker();
-  if (docker) {
-    try {
-      const container = docker.getContainer('searweb-searxng');
-      const inspect = await container.inspect();
-      status.containerRunning = inspect.State.Running;
-    } catch {
-      // Container might not exist
-    }
+  // Check Docker / container
+  if (!isDockerAvailable()) {
+    status.errors.push('Docker not available');
+    return status;
   }
 
-  // Get recent logs and parse engine errors
+  status.containerRunning = isContainerRunning();
+  if (!status.containerRunning) {
+    status.errors.push('Container not running');
+    return status;
+  }
+
+  // Parse logs for engine errors
+  const logText = getContainerLogs(200);
+  if (!logText) {
+    status.errors.push('Failed to read container logs');
+    return status;
+  }
+
   const engineMap = new Map<string, EngineStatus>();
-  
-  if (docker) {
-    try {
-      const container = docker.getContainer('searweb-searxng');
-      const logs = await container.logs({
-        stderr: true,
-        stdout: false,
-        tail: 200,
-        timestamps: false,
+  const lines = logText.split('\n');
+
+  for (const line of lines) {
+    // CAPTCHA: "ERROR:searx.engines.google: CAPTCHA (suspended_time=3600)"
+    const captchaMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*CAPTCHA\s*\(suspended_time=(\d+)\)/);
+    if (captchaMatch) {
+      const name = captchaMatch[1];
+      const suspendedTime = parseInt(captchaMatch[2], 10);
+      engineMap.set(name, {
+        name,
+        status: 'captcha',
+        lastError: 'CAPTCHA detected',
+        suspendedTime,
       });
-      
-      const logText = logs.toString('utf-8');
-      const lines = logText.split('\n');
-      
-      for (const line of lines) {
-        // Parse CAPTCHA errors
-        const captchaMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*CAPTCHA\s*\(suspended_time=(\d+)\)/);
-        if (captchaMatch) {
-          const name = captchaMatch[1];
-          const suspendedTime = parseInt(captchaMatch[2], 10);
-          engineMap.set(name, {
-            name,
-            status: 'captcha',
-            lastError: 'CAPTCHA detected',
-            suspendedTime,
-          });
-          continue;
-        }
-        
-        // Parse Too Many Requests
-        const rateLimitMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*Too many request\s*\(suspended_time=(\d+)\)/);
-        if (rateLimitMatch) {
-          const name = rateLimitMatch[1];
-          const suspendedTime = parseInt(rateLimitMatch[2], 10);
-          engineMap.set(name, {
-            name,
-            status: 'error',
-            lastError: 'Rate limited (Too Many Requests)',
-            suspendedTime,
-          });
-          continue;
-        }
-        
-        // Parse timeouts
-        const timeoutMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*engine timeout/);
-        if (timeoutMatch) {
-          const name = timeoutMatch[1];
-          if (!engineMap.has(name)) {
-            engineMap.set(name, {
-              name,
-              status: 'timeout',
-              lastError: 'Request timeout',
-            });
-          }
-          continue;
-        }
-        
-        // Parse generic HTTP errors
-        const httpErrorMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*HTTP requests failed.*?([0-9]{3})/);
-        if (httpErrorMatch) {
-          const name = httpErrorMatch[1];
-          const code = httpErrorMatch[2];
-          if (!engineMap.has(name) || engineMap.get(name)?.status === 'ok') {
-            engineMap.set(name, {
-              name,
-              status: 'error',
-              lastError: `HTTP ${code}`,
-            });
-          }
-        }
+      continue;
+    }
+
+    // Rate limit: "ERROR:searx.engines.brave: Too many request (suspended_time=180)"
+    const rateLimitMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*Too many request\s*\(suspended_time=(\d+)\)/);
+    if (rateLimitMatch) {
+      const name = rateLimitMatch[1];
+      const suspendedTime = parseInt(rateLimitMatch[2], 10);
+      engineMap.set(name, {
+        name,
+        status: 'error',
+        lastError: 'Rate limited (Too Many Requests)',
+        suspendedTime,
+      });
+      continue;
+    }
+
+    // Timeout: "ERROR:searx.engines.wikidata: engine timeout"
+    const timeoutMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*engine timeout/);
+    if (timeoutMatch) {
+      const name = timeoutMatch[1];
+      if (!engineMap.has(name)) {
+        engineMap.set(name, {
+          name,
+          status: 'timeout',
+          lastError: 'Request timeout',
+        });
       }
-    } catch (e) {
-      status.errors.push(`Failed to read logs: ${(e as Error).message}`);
+      continue;
+    }
+
+    // HTTP errors: "ERROR:searx.engines.XYZ: HTTP requests failed ... 403"
+    const httpErrorMatch = line.match(/ERROR:searx\.engines\.([\w_]+):\s*HTTP requests failed.*?([0-9]{3})/);
+    if (httpErrorMatch) {
+      const name = httpErrorMatch[1];
+      const code = httpErrorMatch[2];
+      if (!engineMap.has(name)) {
+        engineMap.set(name, {
+          name,
+          status: 'error',
+          lastError: `HTTP ${code}`,
+        });
+      }
     }
   }
 
   status.engines = Array.from(engineMap.values());
-  
-  // Also try to get working engines from a test search
-  try {
-    const response = await fetch(`${searxngUrl}/search?q=test&format=json`, {
-      headers: { 'Accept': 'application/json', 'User-Agent': 'searweb/1.0' },
-      signal: AbortSignal.timeout(10000),
-    });
-    
-    if (response.ok) {
-      const data = await response.json() as any;
-      
-      // Check unresponsive_engines if present
-      if (data.unresponsive_engines) {
-        for (const name of data.unresponsive_engines) {
-          if (!engineMap.has(name)) {
-            engineMap.set(name, {
-              name,
-              status: 'error',
-              lastError: 'Unresponsive',
-            });
-          }
-        }
-      }
-      
-      // Update status with all known engines
-      status.engines = Array.from(engineMap.values());
-    }
-  } catch {
-    // Ignore test search errors
+
+  // If no errors found, mention that
+  if (status.engines.length === 0) {
+    status.errors.push('No engine errors found in recent logs (engines may be healthy or logs rotated)');
   }
 
   return status;
