@@ -142,7 +142,9 @@ Edit `claude_desktop_config.json` (location varies by OS):
 
 #### For OpenCode
 
-Edit `~/.config/opencode/opencode.json` or `opencode.jsonc`:
+Edit `~/.config/opencode/opencode.json` or `opencode.jsonc`.
+
+If your OpenCode version supports the `environment` field:
 
 ```json
 {
@@ -162,6 +164,30 @@ Edit `~/.config/opencode/opencode.json` or `opencode.jsonc`:
   }
 }
 ```
+
+If your OpenCode version does **not** support `environment` / `env`, use the bundled wrapper script (recommended for local development):
+
+```json
+{
+  "mcp": {
+    "searweb": {
+      "type": "local",
+      "command": [
+        "node",
+        "E:\\Epheia\\dev\\apps\\tool-apps\\searweb\\scripts\\start.mjs",
+        "mcp"
+      ],
+      "enabled": true,
+      "timeout": 30000
+    }
+  }
+}
+```
+
+The wrapper script:
+- Reads `.env` from the project root automatically
+- Defaults `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` so AI agents can discover optional tools
+- Supports multiple modes: `mcp` (stdio), `sse`, `cli <cmd>`
 
 After editing, verify with:
 ```bash

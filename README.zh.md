@@ -142,7 +142,9 @@ searweb --version
 
 #### OpenCode
 
-编辑 `~/.config/opencode/opencode.json` 或 `opencode.jsonc`：
+编辑 `~/.config/opencode/opencode.json` 或 `opencode.jsonc`。
+
+如果你的 OpenCode 版本支持 `environment` 字段：
 
 ```json
 {
@@ -162,6 +164,30 @@ searweb --version
   }
 }
 ```
+
+如果你的 OpenCode 版本**不支持** `environment` / `env` 字段，请使用附带的包装脚本（本地开发推荐）：
+
+```json
+{
+  "mcp": {
+    "searweb": {
+      "type": "local",
+      "command": [
+        "node",
+        "E:\\Epheia\\dev\\apps\\tool-apps\\searweb\\scripts\\start.mjs",
+        "mcp"
+      ],
+      "enabled": true,
+      "timeout": 30000
+    }
+  }
+}
+```
+
+包装脚本特性：
+- 自动读取项目根目录下的 `.env` 文件
+- 默认设置 `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true`，让 AI 智能体可以发现可选工具
+- 支持多种模式：`mcp`（stdio）、`sse`、`cli <命令>`
 
 编辑后验证：
 ```bash
