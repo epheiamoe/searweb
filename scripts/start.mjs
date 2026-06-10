@@ -4,8 +4,8 @@
 // Why this wrapper?
 // Some MCP clients (including certain OpenCode versions) do not support
 // the standardized "environment" / "env" field for injecting variables.
-// This launcher lets you configure defaults in one place and exposes
-// searweb in multiple modes without requiring environment-field support.
+// This launcher sets defaults and forwards to the built-in searweb entry
+// point in the same process, avoiding stdio issues with child processes.
 //
 // Usage:
 //   node scripts/start.mjs              # MCP stdio mode (default)
@@ -15,10 +15,9 @@
 //
 // The launcher also reads `.env` from the project root if it exists.
 
-import { spawn } from 'child_process';
 import { readFileSync, existsSync } from 'fs';
 import { dirname, resolve } from 'path';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -64,54 +63,47 @@ if (!existsSync(ENTRY)) {
   console.error('Did you forget to run "npm run build"?');
   process.exit(1);
 }
+const ENTRY_URL = pathToFileURL(ENTRY).href;
 
 // Parse arguments (skip node and this script)
 const args = process.argv.slice(2);
 const mode = args[0] || 'mcp';
 
 /**
- * Spawn the actual searweb process with the right argv and env.
+ * Forward argv to searweb and dynamically import it.
  */
-function spawnSearweb(extraArgs, extraEnv = {}) {
-  const childArgs = [ENTRY, ...extraArgs];
-  const child = spawn(process.execPath, childArgs, {
-    stdio: 'inherit',
-    env: { ...process.env, ...extraEnv },
-    windowsHide: true,
-  });
-
-  child.on('error', (err) => {
-    console.error('Failed to start searweb:', err);
-    process.exit(1);
-  });
-
-  child.on('close', (code) => {
-    process.exit(code ?? 0);
-  });
+async function runSearweb(extraArgs, extraEnv = {}) {
+  // Merge any extra env vars
+  for (const [key, value] of Object.entries(extraEnv)) {
+    process.env[key] = value;
+  }
+  // Set argv so searweb sees the right arguments
+  process.argv = [process.argv[0], ENTRY, ...extraArgs];
+  await import(ENTRY_URL);
 }
 
-function main() {
+async function main() {
   switch (mode) {
     case 'mcp':
     case 'server': {
       const configPath = args[1] || resolve(PROJECT_ROOT, 'config.json');
-      spawnSearweb([configPath]);
+      await runSearweb([configPath]);
       break;
     }
     case 'sse': {
       const configPath = args[1] || resolve(PROJECT_ROOT, 'config.json');
-      spawnSearweb([configPath], { SEARWEB_TRANSPORT: 'sse' });
+      await runSearweb([configPath], { SEARWEB_TRANSPORT: 'sse' });
       break;
     }
     case 'cli': {
       const cliArgs = args.slice(1);
-      spawnSearweb(cliArgs);
+      await runSearweb(cliArgs);
       break;
     }
     default:
       if (mode.endsWith('.json') || mode.endsWith('.jsonc')) {
         // Treat as explicit config path for MCP mode
-        spawnSearweb([mode]);
+        await runSearweb([mode]);
       } else {
         console.error(`Unknown mode: ${mode}`);
         console.error('Usage: node scripts/start.mjs [mcp|sse|cli <cmd>|config.json]');
@@ -120,4 +112,7 @@ function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error('Launcher error:', err);
+  process.exit(1);
+});
