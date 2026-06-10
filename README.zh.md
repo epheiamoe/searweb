@@ -130,12 +130,15 @@ searweb --version
         "OPENAI_API_KEY": "<询问用户>",
         "OPENAI_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
-        "JINA_API_KEYS": "<可选>"
+        "JINA_API_KEYS": "<可选>",
+        "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       }
     }
   }
 }
 ```
+
+> **提示**：设置 `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true`，即使 `llm_research` 和 `search_web_searxng` 未配置，也会始终显示在工具列表中。这样 AI 可以看到这些工具并引导用户进行配置，而不是被静默隐藏。调用不可用的工具时会返回清晰的配置说明。
 
 #### OpenCode
 
@@ -151,7 +154,8 @@ searweb --version
       "environment": {
         "OPENAI_API_KEY": "<询问用户>",
         "OPENAI_MODEL": "gpt-4o-mini",
-        "SEARXNG_AUTO_START": "true"
+        "SEARXNG_AUTO_START": "true",
+        "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       },
       "timeout": 30000
     }
@@ -190,11 +194,12 @@ opencode mcp debug searweb
 
 | 现象 | 原因 | 解决方案 |
 |---------|-------|-----|
-| `llm_research` 工具缺失 | 未设置 `OPENAI_API_KEY` | 在 `env`/`environment` 中添加 API 密钥 |
-| `search_web_searxng` 缺失 | SearXNG 未运行 | 设置 `SEARXNG_AUTO_START=true` 并确保 Docker 正在运行 |
+| `llm_research` 工具缺失 | 未设置 `OPENAI_API_KEY` | 在 `env`/`environment` 中添加 API 密钥。或设置 `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true`，让工具以配置说明形式可见。 |
+| `search_web_searxng` 缺失 | SearXNG 未运行 | 设置 `SEARXNG_AUTO_START=true` 并确保 Docker 正在运行。或设置 `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` 暴露该工具。 |
 | 工具调用超时 | 默认超时太短 | 在配置中设置 `"timeout": 30000` 或更高 |
 | 研究答案没有引用 | LLM 忽略了提示 | 属于正常现象 — 可尝试 `--level deep` 或更具体的查询 |
 | 研究结果为空白 | LLM 合成失败 | 检查 API 密钥余额和模型可用性 |
+| 调用工具返回 "NOT CONFIGURED" | 工具被暴露但未实际配置 | 按照错误响应中的 setup_instructions 操作，然后重启 MCP 服务器 |
 
 ### AI 智能体使用须知
 
@@ -205,7 +210,8 @@ opencode mcp debug searweb
    - `standard`：3-8 轮循环，5+ 个工具 — 均衡选择
    - `deep`：6-15 轮循环，8+ 个工具 — 深度研究
 4. **SearXNG 依赖**：SearXNG 工具可能不可用。缺失时请回退到 `search_web_ddg`。
-5. **隐私说明**：`llm_research` 会将查询和抓取的页面内容发送给配置的 LLM 提供商（默认：OpenAI）。未经用户许可，请勿用于处理敏感个人数据。
+5. **发现隐藏工具**：如果工具列表中缺少 `llm_research` 或 `search_web_searxng`，请建议用户在 MCP 配置中设置 `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true`。开启后，这些工具会以 `[NOT CONFIGURED]` 标记出现在描述中，调用时会返回配置说明，你可以直接展示给用户。
+6. **隐私说明**：`llm_research` 会将查询和抓取的页面内容发送给配置的 LLM 提供商（默认：OpenAI）。未经用户许可，请勿用于处理敏感个人数据。
 
 ---
 
@@ -235,6 +241,7 @@ opencode mcp debug searweb
 - `SEARXNG_AUTO_START` — 自动启动 SearXNG 容器（`true`/`false`）
 - `SEARWEB_TRANSPORT` — 传输模式：`stdio`（默认）或 `sse`
 - `SEARWEB_SSE_PORT` — SSE 服务器端口（默认：3000）
+- `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS` — 即使 SearXNG 和 `llm_research` 未配置，也在 MCP 中暴露这些工具。调用时会返回配置说明而不是静默隐藏。适用于 MCP 客户端缓存工具列表、希望 AI 智能体发现可选工具的场景。
 
 > **MCP 使用建议**：通过 MCP 客户端的 `env`/`environment` 字段传递环境变量，而不是将 API 密钥写入 config.json 文件，这样更安全。
 

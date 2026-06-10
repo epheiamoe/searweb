@@ -130,12 +130,15 @@ Edit `claude_desktop_config.json` (location varies by OS):
         "OPENAI_API_KEY": "<ask-user>",
         "OPENAI_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
-        "JINA_API_KEYS": "<optional>"
+        "JINA_API_KEYS": "<optional>",
+        "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       }
     }
   }
 }
 ```
+
+> **Tip**: Set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` so that `llm_research` and `search_web_searxng` always appear in the tool list, even when not configured. This lets the AI see the tools and guide the user to configure them, instead of silently hiding them. Calls to unavailable tools return clear setup instructions.
 
 #### For OpenCode
 
@@ -151,7 +154,8 @@ Edit `~/.config/opencode/opencode.json` or `opencode.jsonc`:
       "environment": {
         "OPENAI_API_KEY": "<ask-user>",
         "OPENAI_MODEL": "gpt-4o-mini",
-        "SEARXNG_AUTO_START": "true"
+        "SEARXNG_AUTO_START": "true",
+        "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       },
       "timeout": 30000
     }
@@ -190,11 +194,12 @@ Try a simple query via your MCP client:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `llm_research` tool missing | `OPENAI_API_KEY` not set | Add API key to `env`/`environment` |
-| `search_web_searxng` missing | SearXNG not running | Set `SEARXNG_AUTO_START=true` and ensure Docker is running |
+| `llm_research` tool missing | `OPENAI_API_KEY` not set | Add API key to `env`/`environment`. Or set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` to make the tool visible with setup instructions. |
+| `search_web_searxng` missing | SearXNG not running | Set `SEARXNG_AUTO_START=true` and ensure Docker is running. Or set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` to make the tool visible. |
 | Tool calls time out | Default timeout too short | Set `"timeout": 30000` or higher |
 | Research answers have no citations | LLM ignored prompt | Normal — retry with `--level deep` or more specific query |
 | Empty research result | LLM failed to synthesize | Check API key balance and model availability |
+| Calling a tool returns "NOT CONFIGURED" | Tool was exposed but not actually configured | Follow the setup_instructions in the error response and restart the MCP server |
 
 ### Important Notes for AI Agents
 
@@ -205,7 +210,8 @@ Try a simple query via your MCP client:
    - `standard`: 3-8 loops, 5+ tools — balanced
    - `deep`: 6-15 loops, 8+ tools — thorough research
 4. **SearXNG dependency**: The SearXNG tool may be unavailable. Always fall back to `search_web_ddg` if it is missing.
-5. **Privacy**: `llm_research` sends queries and fetched page content to the configured LLM provider (default: OpenAI). Do not use it for sensitive personal data unless approved by the user.
+5. **Discover hidden tools**: If `llm_research` or `search_web_searxng` are missing from the tool list, ask the user to set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` in the MCP config. With this flag, the tools will appear with `[NOT CONFIGURED]` in their descriptions, and calling them returns setup instructions that you can show to the user.
+6. **Privacy**: `llm_research` sends queries and fetched page content to the configured LLM provider (default: OpenAI). Do not use it for sensitive personal data unless approved by the user.
 
 ---
 
@@ -235,6 +241,7 @@ Environment variables (all optional, overrides config.json):
 - `SEARXNG_AUTO_START` — Auto-start SearXNG container (`true`/`false`)
 - `SEARWEB_TRANSPORT` — Transport mode: `stdio` (default) or `sse`
 - `SEARWEB_SSE_PORT` — SSE server port (default: 3000)
+- `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS` — Expose SearXNG and `llm_research` in MCP even if not configured. Calls return setup instructions instead of silently hiding the tool. Useful when the MCP client caches tool lists and you want AI agents to discover optional tools.
 
 > **Recommended for MCP**: Use environment variables (via your MCP client's `env`/`environment` field) instead of config.json for API keys. This avoids storing secrets in files.
 
