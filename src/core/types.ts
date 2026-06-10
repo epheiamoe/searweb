@@ -43,6 +43,16 @@ export interface ServerConfig {
   // Cache configuration
   cacheMaxSize?: number;
   cacheTtlSeconds?: number;
+
+  // MCP tooling behavior
+  /**
+   * When true, expose SearXNG and LLM research tools in MCP even if they are
+   * not currently available. Calls to unavailable tools return a structured
+   * error with setup instructions instead of silently missing from the tool
+   * list. This helps AI clients discover tools and guide users to configure
+   * them, working around the MCP protocol's lack of async tool discovery.
+   */
+  exposeUnavailableTools?: boolean;
 }
 
 export interface LLMConfig {

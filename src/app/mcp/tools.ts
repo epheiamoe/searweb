@@ -3,7 +3,14 @@
 import { Tool } from '@modelcontextprotocol/sdk/types.js';
 import { RESEARCH_LEVELS } from '../../core/types.js';
 
-export function getTools(hasLLM: boolean): Tool[] {
+export interface ToolExposureOptions {
+  hasLLM: boolean;
+  exposeUnavailableTools?: boolean;
+}
+
+export function getTools(options: ToolExposureOptions | boolean): Tool[] {
+  const opts = typeof options === 'boolean' ? { hasLLM: options } : options;
+  const { hasLLM, exposeUnavailableTools } = opts;
   const tools: Tool[] = [
     {
       name: 'search_web_ddg',
@@ -83,11 +90,14 @@ export function getTools(hasLLM: boolean): Tool[] {
     },
   ];
 
-  // Add LLM research tool if configured
-  if (hasLLM) {
+  // Add LLM research tool if configured (or if exposure override is enabled)
+  if (hasLLM || exposeUnavailableTools) {
+    const availabilityNote = hasLLM
+      ? ''
+      : ' [NOT CONFIGURED] This tool is currently unavailable because no LLM API key is configured. To enable it, set OPENAI_API_KEY (and optionally OPENAI_MODEL) in the MCP server environment, or add an "llm" section to the searweb config.json. Do not call this tool until it is configured.';
     tools.push({
       name: 'llm_research',
-      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minTools} tools, ${l.maxLoops} loops)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer. Supports session continuation via session_id.`,
+      description: `Conduct automated research using LLM as a sub-agent. Available levels: ${RESEARCH_LEVELS.map(l => `${l.name} (${l.minTools} tools, ${l.maxLoops} loops)`).join(', ')}. The LLM will autonomously search and browse until it finds a satisfactory answer. Supports session continuation via session_id.${availabilityNote}`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -122,10 +132,13 @@ export function getTools(hasLLM: boolean): Tool[] {
   return tools;
 }
 
-export function getSearxngTool(): Tool {
+export function getSearxngTool(unavailable?: boolean): Tool {
+  const availabilityNote = unavailable
+    ? ' [NOT CONFIGURED] This tool is currently unavailable because SearXNG is not configured or not healthy. To enable it, set SEARXNG_URL or SEARXNG_AUTO_START=true in the MCP server environment, or add "searxngUrl"/"searxngAutoStart" to the searweb config.json. If using auto-start, ensure Docker is running. Do not call this tool until it is configured.'
+    : 'NOTE: This tool may not be available if SearXNG is not configured or healthy; if unavailable, fall back to search_web_ddg.';
   return {
     name: 'search_web_searxng',
-    description: 'Search the web using SearXNG metasearch instance. Returns aggregated results from multiple engines (Google, Bing, DuckDuckGo, Wikipedia, etc.) with title, URL, and snippet. Shows underlying engines as source. Supports pagination via page number. Use this when you want broader coverage across multiple search engines in a single query. NOTE: This tool may not be available if SearXNG is not configured or healthy; if unavailable, fall back to search_web_ddg.',
+    description: `Search the web using SearXNG metasearch instance. Returns aggregated results from multiple engines (Google, Bing, DuckDuckGo, Wikipedia, etc.) with title, URL, and snippet. Shows underlying engines as source. Supports pagination via page number. Use this when you want broader coverage across multiple search engines in a single query. ${availabilityNote}`,
     inputSchema: {
       type: 'object',
       properties: {

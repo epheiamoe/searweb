@@ -23,8 +23,9 @@ export async function startMcpServer(
 ): Promise<void> {
   const config = core.config;
   const hasLLM = !!config.llm;
+  const exposeUnavailableTools = !!config.exposeUnavailableTools;
 
-  const baseTools = getTools(hasLLM);
+  const baseTools = getTools({ hasLLM, exposeUnavailableTools });
 
   const server = new Server(
     {
@@ -40,8 +41,8 @@ export async function startMcpServer(
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const availableTools = [...baseTools];
-    if (searxngState.healthy) {
-      availableTools.push(getSearxngTool());
+    if (searxngState.healthy || exposeUnavailableTools) {
+      availableTools.push(getSearxngTool(!searxngState.healthy && exposeUnavailableTools));
     }
     return { tools: availableTools };
   });

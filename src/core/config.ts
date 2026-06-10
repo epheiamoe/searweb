@@ -75,6 +75,9 @@ export function loadConfig(configPath?: string): ServerConfig {
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     };
   }
+  if (process.env.SEARWEB_EXPOSE_UNAVAILABLE_TOOLS) {
+    config.exposeUnavailableTools = process.env.SEARWEB_EXPOSE_UNAVAILABLE_TOOLS === 'true';
+  }
 
   return config;
 }
