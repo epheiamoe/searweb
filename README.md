@@ -165,7 +165,7 @@ If your OpenCode version supports the `environment` field:
 }
 ```
 
-If your OpenCode version does **not** support `environment` / `env`, use the bundled wrapper script (recommended for local development):
+If your OpenCode version does **not** support `environment` / `env`, or if tools fail to appear, use the bundled wrapper script (recommended for OpenCode on Windows):
 
 ```json
 {
@@ -174,8 +174,7 @@ If your OpenCode version does **not** support `environment` / `env`, use the bun
       "type": "local",
       "command": [
         "node",
-        "E:\\Epheia\\dev\\apps\\tool-apps\\searweb\\scripts\\start.mjs",
-        "mcp"
+        "E:\\Epheia\\dev\\apps\\tool-apps\\searweb\\scripts\\start-with-env.js"
       ],
       "enabled": true,
       "timeout": 30000
@@ -187,7 +186,7 @@ If your OpenCode version does **not** support `environment` / `env`, use the bun
 The wrapper script:
 - Reads `.env` from the project root automatically
 - Defaults `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` so AI agents can discover optional tools
-- Supports multiple modes: `mcp` (stdio), `sse`, `cli <cmd>`
+- Uses a `.js` extension and no extra arguments for maximum MCP client compatibility
 
 After editing, verify with:
 ```bash
