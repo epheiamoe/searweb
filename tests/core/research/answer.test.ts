@@ -134,15 +134,26 @@ describe('extractAndRenumberCitations', () => {
     expect(result.sources).toEqual(['http://example.com/page', 'http://example.com/other']);
   });
 
-  it('ignores citations not in source map', () => {
+  it('removes citations not in source map instead of leaving dangling numbers', () => {
     const sources = new Map<number, string>([
       [1, 'http://example.com/1'],
     ]);
 
     const answer = 'Fact[^1^] and missing[^99^].';
     const result = extractAndRenumberCitations(answer, sources);
-    expect(result.answer).toBe('Fact[^1^] and missing[^99^].');
+    expect(result.answer).toBe('Fact[^1^] and missing.');
     expect(result.sources).toEqual(['http://example.com/1']);
+  });
+
+  it('strips all citations when none reference valid sources', () => {
+    const sources = new Map<number, string>([
+      [1, 'http://example.com/1'],
+    ]);
+
+    const answer = 'Fact[^99^] and another[^100^].';
+    const result = extractAndRenumberCitations(answer, sources);
+    expect(result.answer).toBe('Fact and another.');
+    expect(result.sources).toEqual([]);
   });
 
   it('handles empty answer gracefully', () => {

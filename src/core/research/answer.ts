@@ -106,9 +106,11 @@ const SYNTHESIS_SYSTEM_PROMPT = `You are a Research Synthesis Specialist. Your j
 1. **NO EXTERNAL KNOWLEDGE**: Use ONLY the information in the "Research Data" section. Do not supplement with your training data.
 2. **NO HALLUCINATION**: If the research data does not answer part of the question, explicitly state "The available sources do not provide information about [topic]."
 3. **CITE EVERYTHING**: Every factual claim must have an inline citation: [^1^], [^2^], etc.
-   - The citation index corresponds to the source numbers in the Research Data.
+   - You may ONLY use source numbers that appear in the "Source Index" below.
+   - If the Source Index only lists [1] and [2], do NOT generate [^3^], [^4^], etc.
    - Multiple sources for one claim: [^1^][^2^]
    - Place citations immediately after the sentence or claim.
+   - Never invent source numbers. If you cannot determine which source supports a claim, omit the claim or state that the sources do not support it.
 4. **NO VERBATIM QUOTES**: Paraphrase all information in your own words. Never copy-paste from sources.
 5. **STRUCTURED OUTPUT**:
    - Start with a 1-2 sentence **Executive Summary** directly answering the question.
@@ -140,9 +142,17 @@ ${digest}
 ## Source Index
 ${sourceList || '(No sources collected)'}
 
+## Citation Rules (READ CAREFULLY)
+- Every factual claim MUST end with one or more citations in exactly this format: [^N^]
+- N MUST be a source number listed in the Source Index above.
+- Example: If Source Index has [1] https://example.com and [2] https://other.com, a valid sentence is: "Rust is memory-safe[^1^] and fast[^2^]."
+- INVALID: "Rust is memory-safe[^3^]." (there is no [3] in the Source Index)
+- Do not use any other citation format such as [1], (1), or @1.
+- If a claim cannot be supported by any source in the Source Index, either omit it or write "The available sources do not provide information about [topic]."
+
 ---
 
-Please synthesize a comprehensive answer to the Research Question using ONLY the data above. Follow the formatting rules in your system prompt.`;
+Please synthesize a comprehensive answer to the Research Question using ONLY the data above. Follow the formatting rules in your system prompt. Use citations in [^N^] format for every factual claim.`;
 }
 
 // ========================================================================
@@ -262,43 +272,48 @@ function normalizeUrl(url: string): string {
  * Extract citations from the answer, deduplicate URLs (with normalization),
  * and renumber them to create a contiguous 1-N mapping.
  *
+ * Citations that reference unknown source indices (not present in the source
+ * map) are removed from the answer to prevent mismatched citation numbers.
+ *
  * @returns The renumbered answer and the deduplicated source list.
  */
 export function extractAndRenumberCitations(
   answer: string,
   sources: Map<number, string>
 ): { answer: string; sources: string[] } {
-  // Step 1: Find all unique citation indices in the answer
-  const citedIndices = new Set<number>();
+  // Step 1: Find all citation indices in the answer (including invalid ones
+  // so we can clean them up in the replacement pass).
+  const allCitedIndices = new Set<number>();
   for (const match of answer.matchAll(/\[\^(\d+)\^?\]/g)) {
-    const idx = parseInt(match[1], 10);
-    if (sources.has(idx)) {
-      citedIndices.add(idx);
-    }
+    allCitedIndices.add(parseInt(match[1], 10));
   }
 
-  if (citedIndices.size === 0) {
-    return { answer, sources: [] };
+  // Keep only indices that actually exist in our source map.
+  const validCitedIndices = Array.from(allCitedIndices)
+    .filter((idx) => sources.has(idx))
+    .sort((a, b) => a - b);
+
+  if (validCitedIndices.length === 0) {
+    // No valid citations: strip any invalid citation markers and return empty sources.
+    const cleanedAnswer = answer.replace(/\[\^(\d+)\^?\]/g, '').trim();
+    return { answer: cleanedAnswer, sources: [] };
   }
 
-  // Step 2: Build mapping with deduplication (keep first occurrence)
+  // Step 2: Build mapping with deduplication (keep first occurrence).
   const newNumberMap = new Map<number, number>(); // originalIndex -> newNumber
   const dedupedSources: string[] = [];
   const normalizedToNewNumber = new Map<string, number>();
 
-  // Sort cited indices to maintain ascending order for new numbering
-  const sortedCitedIndices = Array.from(citedIndices).sort((a, b) => a - b);
-
-  for (const idx of sortedCitedIndices) {
+  for (const idx of validCitedIndices) {
     const url = sources.get(idx)!;
     const normalized = normalizeUrl(url);
 
     let newNumber: number;
     if (normalizedToNewNumber.has(normalized)) {
-      // Duplicate URL - map to existing number
+      // Duplicate URL - map to existing number.
       newNumber = normalizedToNewNumber.get(normalized)!;
     } else {
-      // New URL - assign next number
+      // New URL - assign next number.
       newNumber = dedupedSources.length + 1;
       dedupedSources.push(url);
       normalizedToNewNumber.set(normalized, newNumber);
@@ -307,9 +322,8 @@ export function extractAndRenumberCitations(
     newNumberMap.set(idx, newNumber);
   }
 
-  // Step 3: Replace citations in answer using a single pass.
-  // This avoids cascading replacements that can occur with sequential replace()
-  // (e.g., [^3^] -> [^2^] being re-replaced by a subsequent [^2^] -> [^1^] rule).
+  // Step 3: Replace valid citations in answer using a single pass.
+  // Remove invalid citations entirely to avoid mismatched numbering.
   const citationPattern = /\[\^(\d+)\^?\]/g;
   const renumberedAnswer = answer.replace(citationPattern, (match, idxStr) => {
     const oldIdx = parseInt(idxStr, 10);
@@ -317,11 +331,14 @@ export function extractAndRenumberCitations(
     if (newNum !== undefined) {
       return `[^${newNum}^]`;
     }
-    return match; // Not in map, keep original
+    return ''; // Unknown source index - remove citation marker.
   });
 
+  // Collapse multiple spaces left behind by removed citations.
+  const cleanedAnswer = renumberedAnswer.replace(/  +/g, ' ').trim();
+
   return {
-    answer: renumberedAnswer,
+    answer: cleanedAnswer,
     sources: dedupedSources,
   };
 }

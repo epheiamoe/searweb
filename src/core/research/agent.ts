@@ -381,6 +381,11 @@ function formatSearchResults(results: SearchResult[], state: AgentState): string
 
   const lines: string[] = ['Search Results:'];
   for (const result of results) {
+    if (!result.url) {
+      // Skip results without a URL; they cannot be cited.
+      continue;
+    }
+
     const index = state.nextSourceIndex;
     state.sources.set(index, result.url);
     state.nextSourceIndex += 1;
@@ -398,6 +403,10 @@ function formatSearchResults(results: SearchResult[], state: AgentState): string
  * @param url The original URL being fetched (for citation purposes)
  */
 function formatFetchResult(result: FetchResult, url: string, state: AgentState): string {
+  if (!url) {
+    return 'Error fetching page: missing URL';
+  }
+
   if (result.error) {
     return `Error fetching page: ${result.error}`;
   }
