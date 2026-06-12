@@ -8,3 +8,5 @@ config.json
 out-of-date/
 .config/
 coverage/
+
+.wiki/

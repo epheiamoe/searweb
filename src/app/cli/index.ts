@@ -62,6 +62,8 @@ program
   .description('Fetch a webpage and convert to markdown')
   .argument('<url>', 'URL to fetch')
   .option('--with-index', 'Preserve all links (including index/navigation links)')
+  .option('--cursor <cursor>', 'Continue reading from a cursor (returned by previous fetch)')
+  .option('--continue', 'Continue reading from last saved cursor for this URL')
   .option('-c, --config <path>', 'Path to config file')
   .option('--json', 'Output as JSON')
   .action(async (url: string, options: any) => {
