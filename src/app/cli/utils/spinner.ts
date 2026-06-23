@@ -87,7 +87,13 @@ export function createSpinner(options?: string | CreateSpinnerOptions): Spinner 
   }
 
   if (oraFunc) {
-    const spinner = oraFunc({ text: opts.text, stream: opts.stream });
+    // 只有当 stream 被显式指定时才传给 ora；undefined 会导致 ora 在非 TTY 环境下崩溃
+    //（TypeError: Cannot read properties of undefined (reading 'columns')）
+    const oraOptions: any = { text: opts.text };
+    if (opts.stream !== undefined) {
+      oraOptions.stream = opts.stream;
+    }
+    const spinner = oraFunc(oraOptions);
     return {
       start(t?: string) { spinner.start(t); return this; },
       stop() { spinner.stop(); return this; },
