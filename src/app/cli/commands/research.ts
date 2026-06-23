@@ -71,7 +71,7 @@ export async function researchCommand(
     process.exit(1);
   }
 
-  const spinner = createSpinner(`Starting research: "${query}"...`).start();
+  const spinner = createSpinner({ text: `Starting research: "${query}"...`, silent: options.json }).start();
 
   try {
     const config = loadConfig(options.config);
@@ -156,7 +156,12 @@ export async function researchCommand(
       }
     }
   } catch (error) {
-    console.error(`Research failed: ${(error as Error).message}`);
+    const message = `Research failed: ${(error as Error).message}`;
+    if (options.json) {
+      console.error(message);
+    } else {
+      spinner.fail(message);
+    }
     process.exit(1);
   }
 }

@@ -21,6 +21,13 @@ describe('buildSystemPrompt', () => {
     expect(prompt).toContain('Citation Format');
     expect(prompt).toContain('Multiple sources for one claim: [^1^][^2^]');
   });
+
+  it('includes project disambiguation context for searweb', () => {
+    const prompt = buildSystemPrompt(3, 8);
+    expect(prompt).toContain('## Project Context for "searweb"');
+    expect(prompt).toContain('https://github.com/epheiamoe/searweb');
+    expect(prompt).toContain('npm package name: searweb');
+  });
 });
 
 describe('wrapToolResult', () => {

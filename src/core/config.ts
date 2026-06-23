@@ -68,13 +68,25 @@ export function loadConfig(configPath?: string): ServerConfig {
   if (process.env.SEARXNG_AUTO_START) {
     config.searxngAutoStart = process.env.SEARXNG_AUTO_START === 'true';
   }
-  if (process.env.OPENAI_API_KEY) {
+
+  // LLM environment variables: SEARWEB_LLM_* 优先于 OPENAI_*
+  if (process.env.SEARWEB_LLM_API_KEY) {
+    config.llm = {
+      provider: (process.env.SEARWEB_LLM_PROVIDER as 'openai' | 'openai-compatible') || 'openai',
+      apiKey: process.env.SEARWEB_LLM_API_KEY,
+      model: process.env.SEARWEB_LLM_MODEL || 'gpt-4o-mini',
+    };
+    if (process.env.SEARWEB_LLM_BASEURL) {
+      config.llm.baseURL = process.env.SEARWEB_LLM_BASEURL;
+    }
+  } else if (process.env.OPENAI_API_KEY) {
     config.llm = {
       provider: 'openai',
       apiKey: process.env.OPENAI_API_KEY,
       model: process.env.OPENAI_MODEL || 'gpt-4o-mini',
     };
   }
+
   if (process.env.SEARWEB_EXPOSE_UNAVAILABLE_TOOLS) {
     config.exposeUnavailableTools = process.env.SEARWEB_EXPOSE_UNAVAILABLE_TOOLS === 'true';
   }

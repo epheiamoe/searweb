@@ -326,6 +326,111 @@ describe('session-store', () => {
     });
   });
 
+  describe('session sanitization', () => {
+    it('should remove reasoning_content from assistant messages when saving', () => {
+      const session: ResearchSession = {
+        id: 'sanitize-test',
+        query: 'test',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [
+          { role: 'user', content: 'hello' },
+          {
+            role: 'assistant',
+            content: 'response',
+            reasoning_content: 'thinking process',
+            thinking: 'more thinking',
+            thought: 'another thought',
+            providerSpecific: { extra: 'data' },
+          } as any,
+          { role: 'tool', content: 'tool result', tool_call_id: 'tc1' } as any,
+        ],
+        sources: {},
+        nextSourceIndex: 0,
+        loopCount: 0,
+        toolCount: 0,
+        minTools: 3,
+        maxLoops: 10,
+      };
+
+      sessionStore.saveSession(session);
+
+      const sessionDir = join(mockState.homeDir, '.config', 'searweb', 'sessions');
+      const filePath = join(sessionDir, 'sanitize-test.json');
+      const raw = readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+
+      expect(parsed.messages).toHaveLength(3);
+      expect(parsed.messages[1]).toEqual({
+        role: 'assistant',
+        content: 'response',
+      });
+      expect(parsed.messages[1]).not.toHaveProperty('reasoning_content');
+      expect(parsed.messages[1]).not.toHaveProperty('thinking');
+      expect(parsed.messages[1]).not.toHaveProperty('thought');
+      expect(parsed.messages[1]).not.toHaveProperty('providerSpecific');
+    });
+
+    it('should preserve standard assistant message fields', () => {
+      const session: ResearchSession = {
+        id: 'standard-fields-test',
+        query: 'test',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        messages: [
+          {
+            role: 'assistant',
+            content: 'response',
+            tool_calls: [{
+              id: 'tc1',
+              type: 'function',
+              function: { name: 'search_web_ddg', arguments: '{}' },
+            }],
+          } as any,
+        ],
+        sources: {},
+        nextSourceIndex: 0,
+        loopCount: 0,
+        toolCount: 0,
+        minTools: 3,
+        maxLoops: 10,
+      };
+
+      sessionStore.saveSession(session);
+
+      const sessionDir = join(mockState.homeDir, '.config', 'searweb', 'sessions');
+      const filePath = join(sessionDir, 'standard-fields-test.json');
+      const raw = readFileSync(filePath, 'utf-8');
+      const parsed = JSON.parse(raw);
+
+      expect(parsed.messages[0]).toEqual({
+        role: 'assistant',
+        content: 'response',
+        tool_calls: [{
+          id: 'tc1',
+          type: 'function',
+          function: { name: 'search_web_ddg', arguments: '{}' },
+        }],
+      });
+    });
+
+    it('sanitizeMessage should strip non-standard fields', () => {
+      const msg = {
+        role: 'assistant',
+        content: 'answer',
+        reasoning_content: 'thinking',
+        extraField: 'should be removed',
+      } as any;
+
+      const sanitized = sessionStore.sanitizeMessage(msg);
+
+      expect(sanitized).toEqual({
+        role: 'assistant',
+        content: 'answer',
+      });
+    });
+  });
+
   describe('session file persistence', () => {
     it('should persist sessions to disk and survive reload', () => {
       const session: ResearchSession = {

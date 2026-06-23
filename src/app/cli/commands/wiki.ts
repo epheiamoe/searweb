@@ -6,7 +6,7 @@ import { createSpinner } from '../utils/spinner.js';
 import { formatSearchResults } from '../formatters/search.js';
 
 export async function wikiCommand(query: string, options: { lang?: string; limit?: string; json?: boolean; config?: string }) {
-  const spinner = createSpinner(`Searching Wikipedia: "${query}"...`).start();
+  const spinner = createSpinner({ text: `Searching Wikipedia: "${query}"...`, silent: options.json }).start();
 
   try {
     const config = loadConfig(options.config);
@@ -19,7 +19,11 @@ export async function wikiCommand(query: string, options: { lang?: string; limit
 
     console.log(formatSearchResults(results, options.json));
   } catch (error) {
-    spinner.fail(`Wikipedia search failed: ${(error as Error).message}`);
+    if (options.json) {
+      console.error(`Wikipedia search failed: ${(error as Error).message}`);
+    } else {
+      spinner.fail(`Wikipedia search failed: ${(error as Error).message}`);
+    }
     process.exit(1);
   }
 }

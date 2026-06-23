@@ -47,6 +47,15 @@
     "typescript": "^5.8.3",
     "vitest": "^4.1.8"
   },
+  "files": [
+    "dist",
+    "scripts",
+    "README.md",
+    "README.zh.md",
+    "CONFIG.md",
+    "SETUP.md",
+    "config.template.json"
+  ],
   "engines": {
     "node": ">=20"
   }

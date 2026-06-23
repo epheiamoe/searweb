@@ -156,6 +156,29 @@ describe('extractAndRenumberCitations', () => {
     expect(result.sources).toEqual([]);
   });
 
+  it('collapses consecutive duplicate citations', () => {
+    const sources = new Map<number, string>([
+      [5, 'http://example.com/5'],
+    ]);
+
+    const answer = 'Fact[^5^][^5^] and more.';
+    const result = extractAndRenumberCitations(answer, sources);
+    expect(result.answer).toBe('Fact[^1^] and more.');
+    expect(result.sources).toEqual(['http://example.com/5']);
+  });
+
+  it('does not collapse non-consecutive duplicate citations', () => {
+    const sources = new Map<number, string>([
+      [1, 'http://example.com/1'],
+      [2, 'http://example.com/2'],
+    ]);
+
+    const answer = 'Fact[^1^][^2^][^1^].';
+    const result = extractAndRenumberCitations(answer, sources);
+    expect(result.answer).toBe('Fact[^1^][^2^][^1^].');
+    expect(result.sources).toEqual(['http://example.com/1', 'http://example.com/2']);
+  });
+
   it('handles empty answer gracefully', () => {
     const sources = new Map<number, string>();
     const result = extractAndRenumberCitations('No citations here.', sources);

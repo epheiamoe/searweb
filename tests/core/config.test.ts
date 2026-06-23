@@ -113,6 +113,55 @@ describe('loadConfig', () => {
     });
   });
 
+  it('should prefer SEARWEB_LLM_API_KEY over OPENAI_API_KEY', () => {
+    (existsSync as any).mockReturnValue(false);
+    
+    process.env.SEARWEB_LLM_API_KEY = 'sk-searweb-key';
+    process.env.SEARWEB_LLM_MODEL = 'gpt-4o-mini';
+    process.env.SEARWEB_LLM_PROVIDER = 'openai-compatible';
+    process.env.SEARWEB_LLM_BASEURL = 'https://api.deepseek.com';
+    process.env.OPENAI_API_KEY = 'sk-openai-key';
+    process.env.OPENAI_MODEL = 'gpt-4o';
+    
+    const config = loadConfig();
+
+    expect(config.llm).toEqual({
+      provider: 'openai-compatible',
+      apiKey: 'sk-searweb-key',
+      model: 'gpt-4o-mini',
+      baseURL: 'https://api.deepseek.com',
+    });
+  });
+
+  it('should use SEARWEB_LLM_* defaults when only API key is provided', () => {
+    (existsSync as any).mockReturnValue(false);
+    
+    process.env.SEARWEB_LLM_API_KEY = 'sk-searweb-key';
+    
+    const config = loadConfig();
+
+    expect(config.llm).toEqual({
+      provider: 'openai',
+      apiKey: 'sk-searweb-key',
+      model: 'gpt-4o-mini',
+    });
+  });
+
+  it('should keep OPENAI_API_KEY / OPENAI_MODEL backward compatibility', () => {
+    (existsSync as any).mockReturnValue(false);
+    
+    process.env.OPENAI_API_KEY = 'sk-openai-key';
+    process.env.OPENAI_MODEL = 'gpt-4o';
+    
+    const config = loadConfig();
+
+    expect(config.llm).toEqual({
+      provider: 'openai',
+      apiKey: 'sk-openai-key',
+      model: 'gpt-4o',
+    });
+  });
+
   it('should use default OpenAI model when OPENAI_API_KEY is set but OPENAI_MODEL is not', () => {
     (existsSync as any).mockReturnValue(false);
     

@@ -61,7 +61,12 @@ Use Markdown superscript citations: [^1^], [^2^], [^3^], etc.
 Use LaTeX with \\( \\) for inline. Never use $ or $$.
 
 ## When Loop Limit is Reached
-If you receive an error stating the loop limit is reached, you MUST immediately provide your final answer based on all information gathered. If information is incomplete, explicitly state what is missing. Do not guess.`;
+If you receive an error stating the loop limit is reached, you MUST immediately provide your final answer based on all information gathered. If information is incomplete, explicitly state what is missing. Do not guess.
+
+## Project Context for "searweb"
+When the research question involves the tool/project named "searweb", use the following canonical references unless sources explicitly contradict them:
+- Official repository: https://github.com/epheiamoe/searweb
+- npm package name: searweb`;
 }
 
 /**

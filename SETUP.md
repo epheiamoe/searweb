@@ -1,5 +1,18 @@
 # Searweb 快速配置脚本
 
+> **⚠️ 安全提示**：旧版本仓库中误包含了一个真实 API key。如果你曾经复制过该 key，请立即到对应的 LLM 提供商控制台撤销/轮换。`config.json` 不再随包提供，首次使用需从 `config.template.json` 创建，并且不要将其提交到版本控制。
+
+## 迁移说明
+
+如果你从旧版本升级，或之前依赖包内自带的 `config.json`：
+
+1. `config.json` 不再随 npm 包一起发布。安装后请手动创建：
+   ```bash
+   cp config.template.json config.json
+   ```
+2. 编辑 `config.json` 填入你的 API keys。
+3. 如果你之前使用过仓库中泄露的 DeepSeek key，请立即前往 DeepSeek 控制台撤销/轮换该 key。
+
 ## 一键配置
 
 ### 方法 1: 使用 npm
@@ -58,8 +71,30 @@ node scripts/setup.js
 2. 编辑 `config.json` 填入 API keys
 3. 修改 `opencode.jsonc` 添加配置文件路径
 
+也可以使用命令行非交互式设置：
+
+```bash
+searweb config --set llm.apiKey=sk-xxx
+searweb config --set llm.model=gpt-4o-mini
+searweb config --set searxngAutoStart=true
+searweb config --show
+```
+
 ## 获取 API Keys
 
 - **Jina.ai**: https://jina.ai/reader (免费)
 - **OpenAI**: https://platform.openai.com
 - **SearXNG**: `docker run -d -p 8080:8080 searxng/searxng`
+
+## 环境变量
+
+推荐使用 `SEARWEB_LLM_*` 环境变量，优先级高于 `OPENAI_*`：
+
+```powershell
+$env:SEARWEB_LLM_API_KEY="sk-xxx"
+$env:SEARWEB_LLM_MODEL="gpt-4o-mini"
+$env:SEARWEB_LLM_BASEURL="https://api.openai.com/v1"
+$env:SEARWEB_LLM_PROVIDER="openai"
+```
+
+旧的 `OPENAI_API_KEY` / `OPENAI_MODEL` 仍然兼容。

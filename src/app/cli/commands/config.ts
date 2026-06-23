@@ -1,4 +1,4 @@
-// src/app/cli/commands/config.ts - Interactive configuration wizard
+// src/app/cli/commands/config.ts - Interactive configuration wizard + non-interactive show/set
 
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname, resolve } from 'path';
@@ -54,7 +54,215 @@ async function configureSearxngManual(config: Record<string, any>) {
   }
 }
 
-export async function configCommand() {
+// -------------------------------------------------------------------------
+// Non-interactive helpers
+// -------------------------------------------------------------------------
+
+/**
+ * 判断字段名是否为敏感字段（apiKey/key/token/secret/password，不区分大小写）。
+ */
+function isSensitiveKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  const sensitiveSuffixes = ['apikey', 'api_key', 'key', 'token', 'secret', 'password'];
+  return sensitiveSuffixes.some(suffix =>
+    lower === suffix ||
+    lower.endsWith(suffix) ||
+    // 处理复数/组合命名，如 jinaApiKeys、jinaApiKeyList 等
+    (suffix !== 'key' && lower.includes(suffix))
+  );
+}
+
+/**
+ * 递归遮蔽敏感字段，用于 --show 输出。
+ */
+export function maskSecrets(value: any): any {
+  if (value === null || typeof value !== 'object') return value;
+
+  if (Array.isArray(value)) {
+    return value.map((item) => {
+      if (item !== null && typeof item === 'object') return maskSecrets(item);
+      return item;
+    });
+  }
+
+  const masked: Record<string, any> = {};
+  for (const [key, val] of Object.entries(value)) {
+    if (isSensitiveKey(key)) {
+      // 敏感字段如果是数组，把每个元素都遮蔽为 ****
+      masked[key] = Array.isArray(val) ? val.map(() => '****') : '****';
+    } else if (val !== null && typeof val === 'object') {
+      masked[key] = maskSecrets(val);
+    } else {
+      masked[key] = val;
+    }
+  }
+  return masked;
+}
+
+/**
+ * 解析 --set key=value 字符串。
+ */
+function parseSetArg(arg: string): { key: string; value: string } {
+  const eqIndex = arg.indexOf('=');
+  if (eqIndex === -1) {
+    throw new Error(`Invalid --set argument: ${arg}. Expected key=value.`);
+  }
+  const key = arg.slice(0, eqIndex).trim();
+  const value = arg.slice(eqIndex + 1);
+  if (!key) {
+    throw new Error(`Invalid --set argument: ${arg}. Key cannot be empty.`);
+  }
+  return { key, value };
+}
+
+/**
+ * 按点号路径读取对象值。
+ */
+function getByPath(obj: Record<string, any>, path: string): any {
+  const parts = path.split('.');
+  let current: any = obj;
+  for (const part of parts) {
+    if (current === null || typeof current !== 'object') return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+/**
+ * 按点号路径设置对象值。
+ */
+function setByPath(obj: Record<string, any>, path: string, value: any): void {
+  const parts = path.split('.');
+  let current: Record<string, any> = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!(part in current) || current[part] === null || typeof current[part] !== 'object') {
+      current[part] = {};
+    }
+    current = current[part];
+  }
+  current[parts[parts.length - 1]] = value;
+}
+
+/**
+ * 已知数值字段集合，用于 --set 时自动将字符串转为数字。
+ */
+const KNOWN_NUMERIC_FIELDS = new Set([
+  'cacheMaxSize',
+  'cacheTtlSeconds',
+  'ssePort',
+]);
+
+/**
+ * 已知数组字段集合，用于 --set 时按逗号分割。
+ */
+const KNOWN_ARRAY_FIELDS = new Set([
+  'jinaApiKeys',
+]);
+
+/**
+ * 将字符串值转换为合适的类型（布尔、数字、数组）。
+ */
+function coerceValue(key: string, rawValue: string): any {
+  // 布尔值
+  if (rawValue === 'true') return true;
+  if (rawValue === 'false') return false;
+
+  // 已知数组字段按逗号分割
+  const lastPart = key.split('.').pop() || key;
+  if (KNOWN_ARRAY_FIELDS.has(lastPart)) {
+    return rawValue.split(',').map(s => s.trim()).filter(Boolean);
+  }
+
+  // 已知数字字段或当前同路径已有数字值时保持数字
+  if (KNOWN_NUMERIC_FIELDS.has(lastPart)) {
+    const num = Number(rawValue);
+    if (!isNaN(num)) return num;
+  }
+
+  return rawValue;
+}
+
+async function showConfig(): Promise<void> {
+  let config: Record<string, any> = {};
+  if (existsSync(defaultConfigPath)) {
+    try {
+      config = JSON.parse(readFileSync(defaultConfigPath, 'utf-8'));
+    } catch (e: any) {
+      console.error(`Failed to read config: ${e.message}`);
+      process.exit(1);
+    }
+  }
+  console.log(JSON.stringify(maskSecrets(config), null, 2));
+}
+
+async function setConfigValues(setArgs: string[]): Promise<void> {
+  let config: Record<string, any> = {};
+  if (existsSync(defaultConfigPath)) {
+    try {
+      config = JSON.parse(readFileSync(defaultConfigPath, 'utf-8'));
+    } catch (e: any) {
+      console.error(`Failed to read config: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  for (const arg of setArgs) {
+    let key: string;
+    let rawValue: string;
+    try {
+      ({ key, value: rawValue } = parseSetArg(arg));
+    } catch (e: any) {
+      console.error(e.message);
+      process.exit(1);
+    }
+
+    // 如果该路径已存在数字值，输入也按数字解析
+    const existing = getByPath(config, key);
+    let value: any;
+    if (rawValue === 'true') value = true;
+    else if (rawValue === 'false') value = false;
+    else if (typeof existing === 'number') {
+      const num = Number(rawValue);
+      value = isNaN(num) ? rawValue : num;
+    } else {
+      value = coerceValue(key, rawValue);
+    }
+
+    setByPath(config, key, value);
+    console.log(`Updated config.json: ${key}=${rawValue}`);
+  }
+
+  try {
+    writeFileSync(defaultConfigPath, JSON.stringify(config, null, 2));
+  } catch (e: any) {
+    console.error(`Failed to write config: ${e.message}`);
+    process.exit(1);
+  }
+}
+
+// -------------------------------------------------------------------------
+// Main command
+// -------------------------------------------------------------------------
+
+export async function configCommand(options: { show?: boolean; set?: string[] } = {}) {
+  // --show 与 --set 同时存在时先执行所有 --set，再 --show
+  if (options.set && options.set.length > 0) {
+    await setConfigValues(options.set);
+  }
+
+  if (options.show) {
+    await showConfig();
+    return;
+  }
+
+  // 没有任何标志时进入交互式 wizard
+  if (!options.set || options.set.length === 0) {
+    await runInteractiveWizard();
+  }
+}
+
+async function runInteractiveWizard() {
   console.log('Configuration Wizard\n');
   console.log('This wizard will help you configure searweb.\n');
 

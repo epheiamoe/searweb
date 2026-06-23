@@ -334,8 +334,12 @@ export function extractAndRenumberCitations(
     return ''; // Unknown source index - remove citation marker.
   });
 
+  // Step 4: Collapse consecutive duplicate citations (e.g. [^5^][^5^] → [^5^]).
+  // Non-consecutive duplicates are preserved.
+  const dedupedAnswer = renumberedAnswer.replace(/(\[\^\d+\^\])(?:\s*\1)+/g, '$1');
+
   // Collapse multiple spaces left behind by removed citations.
-  const cleanedAnswer = renumberedAnswer.replace(/  +/g, ' ').trim();
+  const cleanedAnswer = dedupedAnswer.replace(/  +/g, ' ').trim();
 
   return {
     answer: cleanedAnswer,

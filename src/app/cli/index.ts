@@ -99,11 +99,17 @@ program
     await researchCommand(query.join(' ') || undefined, options);
   });
 
+function collect(value: string, previous: string[] = []): string[] {
+  return previous.concat(value);
+}
+
 program
   .command('config')
-  .description('Run interactive configuration wizard')
-  .action(async () => {
-    await configCommand();
+  .description('Run interactive configuration wizard or manage config non-interactively')
+  .option('--show', 'Display current configuration with secrets masked')
+  .option('--set <key=value>', 'Set a config value (dot notation, repeatable)', collect, [])
+  .action(async (options: any) => {
+    await configCommand(options);
   });
 
 export function runCli(): void {

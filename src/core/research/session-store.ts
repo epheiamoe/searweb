@@ -10,6 +10,31 @@ const SESSION_DIR = join(homedir(), '.config', 'searweb', 'sessions');
 const MAX_SESSIONS = 50;
 
 /**
+ * OpenAI ChatCompletionMessageParam 标准字段白名单。
+ * 保存会话前清理 assistant message 中的非标准字段（如 reasoning_content、
+ * thinking、thought、providerSpecific），避免这些字段被持久化并回传给 LLM，
+ * 导致兼容性问题或 token 浪费。
+ */
+const ALLOWED_MESSAGE_FIELDS = new Set([
+  'role', 'content', 'name', 'tool_calls', 'function_call', 'tool_call_id'
+]);
+
+/**
+ * 清理单条消息，仅保留 OpenAI 标准字段。
+ * 对非对象输入进行防御性处理，返回原值。
+ */
+export function sanitizeMessage(msg: ChatCompletionMessageParam): ChatCompletionMessageParam {
+  if (!msg || typeof msg !== 'object') return msg;
+  const sanitized: Record<string, any> = {};
+  for (const key of Object.keys(msg)) {
+    if (ALLOWED_MESSAGE_FIELDS.has(key)) {
+      sanitized[key] = (msg as any)[key];
+    }
+  }
+  return sanitized as ChatCompletionMessageParam;
+}
+
+/**
  * Serializable research session state.
  */
 export interface ResearchSession {
@@ -64,7 +89,12 @@ export function generateSessionId(): string {
 export function saveSession(session: ResearchSession): void {
   ensureDir();
   const path = sessionPath(session.id);
-  writeFileSync(path, JSON.stringify(session, null, 2), 'utf-8');
+  // 持久化前清理消息，防止 reasoning_content 等非标准字段进入磁盘并回传 LLM
+  const sanitizedSession = {
+    ...session,
+    messages: session.messages.map(sanitizeMessage),
+  };
+  writeFileSync(path, JSON.stringify(sanitizedSession, null, 2), 'utf-8');
   gcSessions();
 }
 

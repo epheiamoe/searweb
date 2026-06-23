@@ -36,11 +36,12 @@ export async function fetchCommand(
     cursor = options.cursor;
   }
 
-  const spinner = createSpinner(
-    cursor
+  const spinner = createSpinner({
+    text: cursor
       ? `Fetching: ${url} (continuing from offset)...`
-      : `Fetching: ${url}...`
-  ).start();
+      : `Fetching: ${url}...`,
+    silent: options.json,
+  }).start();
 
   try {
     const config = loadConfig(options.config);
@@ -63,7 +64,11 @@ export async function fetchCommand(
 
     console.log(formatFetchResult(result, options.json));
   } catch (error) {
-    spinner.fail(`Fetch failed: ${(error as Error).message}`);
+    if (options.json) {
+      console.error(`Fetch failed: ${(error as Error).message}`);
+    } else {
+      spinner.fail(`Fetch failed: ${(error as Error).message}`);
+    }
     process.exit(1);
   }
 }

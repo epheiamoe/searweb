@@ -107,7 +107,10 @@ export async function xngCommand(
   }
 
   // Normal search flow
-  const spinner = createSpinner(`Starting SearXNG and searching: "${query}"...`).start();
+  const spinner = createSpinner({
+    text: `Starting SearXNG and searching: "${query}"...`,
+    silent: options.json,
+  }).start();
 
   try {
     // Ensure SearXNG is running
@@ -115,10 +118,14 @@ export async function xngCommand(
     const status = await core.ensureSearxngRunning();
 
     if (!status.healthy) {
-      spinner.fail(`SearXNG is not available: ${status.error || 'Unknown error'}`);
-      console.error('\nTo use SearXNG, either:');
-      console.error('  1. Install Docker and set searxngAutoStart: true in config.json');
-      console.error('  2. Set searxngUrl to an existing instance');
+      if (options.json) {
+        console.error(`SearXNG is not available: ${status.error || 'Unknown error'}`);
+      } else {
+        spinner.fail(`SearXNG is not available: ${status.error || 'Unknown error'}`);
+        console.error('\nTo use SearXNG, either:');
+        console.error('  1. Install Docker and set searxngAutoStart: true in config.json');
+        console.error('  2. Set searxngUrl to an existing instance');
+      }
       process.exit(1);
     }
 
@@ -129,9 +136,24 @@ export async function xngCommand(
     const results = await core.searchSearxng(query, limit, page);
     spinner.stop();
 
+    // 空结果时检查引擎健康状态，向 stderr 输出提示（不影响 stdout 的 JSON 输出）
+    if (results.length === 0) {
+      const searxngUrl = config.searxngUrl || status.url || 'http://localhost:8081';
+      const fullStatus = await getSearxngStatus(searxngUrl);
+      const hasUnhealthyEngines = !fullStatus.healthy ||
+        fullStatus.engines.some(e => e.status === 'error' || e.status === 'timeout' || e.status === 'captcha');
+      if (hasUnhealthyEngines) {
+        console.error("SearXNG returned no results; engines appear rate-limited or timed out. Check status with 'searweb xng --status'.");
+      }
+    }
+
     console.log(formatSearchResults(results, options.json));
   } catch (error) {
-    spinner.fail(`SearXNG search failed: ${(error as Error).message}`);
+    if (options.json) {
+      console.error(`SearXNG search failed: ${(error as Error).message}`);
+    } else {
+      spinner.fail(`SearXNG search failed: ${(error as Error).message}`);
+    }
     process.exit(1);
   }
 }

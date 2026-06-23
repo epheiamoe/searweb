@@ -16,6 +16,8 @@ Unified web search with DDG, SearXNG, Wikipedia, and LLM research.
 | Wikipedia | `search_wikipedia` | `searweb wiki` | Search Wikipedia articles |
 | AI Research | `llm_research` | `searweb research` | LLM-powered autonomous research with synthesis & citations |
 
+> **⚠️ Security Notice**: A previous version of this repository accidentally included a real API key. If you copied that key, please **revoke/rotate it immediately** in your LLM provider console. `config.json` is no longer shipped with the package; you must create it from `config.template.json`.
+
 ## Installation
 
 Requires **Node.js >= 20** and **npm**.
@@ -58,8 +60,14 @@ searweb research "Tell me more about MCP tools" --session <id>
 searweb research --list         # List saved sessions
 searweb research --rm <id> -y   # Delete a session
 
-# Interactive configuration
+# Configuration (interactive wizard)
 searweb config
+
+# Configuration (non-interactive)
+searweb config --show
+searweb config --set llm.apiKey=sk-xxx
+searweb config --set searxngAutoStart=true
+searweb config --set jinaApiKeys=key1,key2
 ```
 
 ### MCP Mode (AI Agent)
@@ -127,8 +135,8 @@ Edit `claude_desktop_config.json` (location varies by OS):
       "command": "npx",
       "args": ["-y", "searweb"],
       "env": {
-        "OPENAI_API_KEY": "<ask-user>",
-        "OPENAI_MODEL": "gpt-4o-mini",
+        "SEARWEB_LLM_API_KEY": "<ask-user>",
+        "SEARWEB_LLM_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
         "JINA_API_KEYS": "<optional>",
         "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
@@ -154,8 +162,8 @@ If your OpenCode version supports the `environment` field:
       "command": ["npx", "-y", "searweb"],
       "enabled": true,
       "environment": {
-        "OPENAI_API_KEY": "<ask-user>",
-        "OPENAI_MODEL": "gpt-4o-mini",
+        "SEARWEB_LLM_API_KEY": "<ask-user>",
+        "SEARWEB_LLM_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
         "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       },
@@ -219,7 +227,7 @@ Try a simple query via your MCP client:
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| `llm_research` tool missing | `OPENAI_API_KEY` not set | Add API key to `env`/`environment`. Or set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` to make the tool visible with setup instructions. |
+| `llm_research` tool missing | `SEARWEB_LLM_API_KEY` or `OPENAI_API_KEY` not set | Add API key to `env`/`environment`. Or set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` to make the tool visible with setup instructions. |
 | `search_web_searxng` missing | SearXNG not running | Set `SEARXNG_AUTO_START=true` and ensure Docker is running. Or set `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS=true` to make the tool visible. |
 | Tool calls time out | Default timeout too short | Set `"timeout": 30000` or higher |
 | Research answers have no citations | LLM ignored prompt | Normal — retry with `--level deep` or more specific query |
@@ -242,7 +250,13 @@ Try a simple query via your MCP client:
 
 ## Configuration
 
-Create a `config.json` or use environment variables:
+Create a `config.json` or use environment variables.
+
+> **Note**: `config.json` is **not bundled** with the npm package. After installation, create it from the template:
+> ```bash
+> cp config.template.json config.json
+> # Edit config.json and fill in your API keys
+> ```
 
 ```json
 {
@@ -257,8 +271,12 @@ Create a `config.json` or use environment variables:
 }
 ```
 
-Environment variables (all optional, overrides config.json):
-- `OPENAI_API_KEY` — OpenAI API key for LLM research
+Environment variables (all optional, override `config.json`):
+- `SEARWEB_LLM_API_KEY` — LLM API key for research (recommended, takes priority over `OPENAI_API_KEY`)
+- `SEARWEB_LLM_MODEL` — Model name (default: `gpt-4o-mini`)
+- `SEARWEB_LLM_BASEURL` — Custom base URL for OpenAI-compatible providers
+- `SEARWEB_LLM_PROVIDER` — Provider: `openai` (default) or `openai-compatible`
+- `OPENAI_API_KEY` — OpenAI API key for LLM research (kept for backward compatibility; `SEARWEB_LLM_*` wins if both are set)
 - `OPENAI_MODEL` — Model name (default: `gpt-4o-mini`)
 - `JINA_API_KEYS` — Comma-separated Jina.ai API keys
 - `JINA_DISABLE_REMOTE` — Disable remote Jina proxy (`true`/`false`)
@@ -267,6 +285,8 @@ Environment variables (all optional, overrides config.json):
 - `SEARWEB_TRANSPORT` — Transport mode: `stdio` (default) or `sse`
 - `SEARWEB_SSE_PORT` — SSE server port (default: 3000)
 - `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS` — Expose SearXNG and `llm_research` in MCP even if not configured. Calls return setup instructions instead of silently hiding the tool. Useful when the MCP client caches tool lists and you want AI agents to discover optional tools.
+
+> **Priority**: `SEARWEB_LLM_*` > `OPENAI_*`. If you set both, the `SEARWEB_LLM_*` values are used.
 
 > **Recommended for MCP**: Use environment variables (via your MCP client's `env`/`environment` field) instead of config.json for API keys. This avoids storing secrets in files.
 
@@ -387,11 +407,35 @@ SOURCES
 
 ### `searweb config`
 
-Interactive configuration wizard. Guides you through:
-- Jina.ai API keys
-- SearXNG Docker setup
-- LLM provider configuration
-- OpenCode integration
+Configuration wizard and non-interactive config management.
+
+```bash
+# Interactive wizard (creates/overwrites config.json)
+searweb config
+
+# Show current config with secrets masked
+searweb config --show
+
+# Set individual values (dot notation)
+searweb config --set llm.apiKey=sk-xxx
+searweb config --set llm.provider=openai-compatible
+searweb config --set llm.baseURL=https://api.deepseek.com/v1
+searweb config --set llm.model=deepseek-chat
+searweb config --set searxngAutoStart=true
+searweb config --set jinaApiKeys=key1,key2
+
+# Combine: set then show
+searweb config --set llm.apiKey=sk-xxx --show
+```
+
+`--set` supports:
+- Dot notation paths (`llm.apiKey`, `cacheMaxSize`)
+- Boolean values (`true`/`false`)
+- Known numeric fields (`cacheMaxSize`, `cacheTtlSeconds`, `ssePort`)
+- Array fields as comma-separated strings (`jinaApiKeys`)
+- Multiple `--set` flags
+
+`--show` masks any field whose name ends with `apiKey`, `api_key`, `key`, `token`, `secret`, or `password`.
 
 ### `searweb server [config]`
 
@@ -485,7 +529,7 @@ npm run test:watch    # Watch mode
 npm run test:coverage # With coverage report
 ```
 
-Current test coverage: **53 tests** covering config loading, session store (LRU eviction), prompt building, tool definitions, answer synthesis, and citation renumbering.
+Current test coverage: **67 tests** covering config loading, session store (LRU eviction), prompt building, tool definitions, answer synthesis, citation renumbering, and config CLI masking.
 
 ### MCP Debugging
 
@@ -509,7 +553,7 @@ opencode mcp auth searweb      # Trigger OAuth (if configured)
 **Common issues:**
 - `npx searweb` times out: Add `"timeout": 30000` to your MCP config
 - SearXNG tool missing: Check `searweb xng --status` in CLI
-- Research tool missing: Ensure `OPENAI_API_KEY` is set
+- Research tool missing: Ensure `SEARWEB_LLM_API_KEY` or `OPENAI_API_KEY` is set
 - Empty research answer: Check LLM API key balance and model availability
 
 ## License

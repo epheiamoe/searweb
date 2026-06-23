@@ -6,7 +6,7 @@ import { createSpinner } from '../utils/spinner.js';
 import { formatSearchResults } from '../formatters/search.js';
 
 export async function ddgCommand(query: string, options: { limit?: string; offset?: string; json?: boolean; config?: string }) {
-  const spinner = createSpinner(`Searching DuckDuckGo: "${query}"...`).start();
+  const spinner = createSpinner({ text: `Searching DuckDuckGo: "${query}"...`, silent: options.json }).start();
 
   try {
     const config = loadConfig(options.config);
@@ -19,7 +19,11 @@ export async function ddgCommand(query: string, options: { limit?: string; offse
 
     console.log(formatSearchResults(results, options.json));
   } catch (error) {
-    spinner.fail(`DDG search failed: ${(error as Error).message}`);
+    if (options.json) {
+      console.error(`DDG search failed: ${(error as Error).message}`);
+    } else {
+      spinner.fail(`DDG search failed: ${(error as Error).message}`);
+    }
     process.exit(1);
   }
 }
