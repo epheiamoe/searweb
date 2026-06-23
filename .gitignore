@@ -10,3 +10,4 @@ out-of-date/
 coverage/
 
 .wiki/
+.swarm/
