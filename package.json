@@ -50,6 +50,7 @@
   "files": [
     "dist",
     "scripts",
+    "rules",
     "README.md",
     "README.zh.md",
     "CONFIG.md",

@@ -161,14 +161,28 @@ const KNOWN_ARRAY_FIELDS = new Set([
 ]);
 
 /**
- * 将字符串值转换为合适的类型（布尔、数字、数组）。
+ * 将字符串值转换为合适的类型（布尔、数字、数组、JSON）。
  */
 function coerceValue(key: string, rawValue: string): any {
+  // 首先尝试 JSON 解析，支持 '["key1","key2"]'、'true'、'123' 等
+  try {
+    const parsed = JSON.parse(rawValue);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+    if (typeof parsed === 'boolean' || typeof parsed === 'number') {
+      return parsed;
+    }
+    // 解析为字符串时继续走后续逻辑（避免把 'true' 这类原本应特殊处理的值直接当普通字符串）
+  } catch {
+    // 不是 JSON，继续后续逻辑
+  }
+
   // 布尔值
   if (rawValue === 'true') return true;
   if (rawValue === 'false') return false;
 
-  // 已知数组字段按逗号分割
+  // 已知数组字段按逗号分割（兼容旧用法）
   const lastPart = key.split('.').pop() || key;
   if (KNOWN_ARRAY_FIELDS.has(lastPart)) {
     return rawValue.split(',').map(s => s.trim()).filter(Boolean);

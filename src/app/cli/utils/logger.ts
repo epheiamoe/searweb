@@ -4,7 +4,8 @@ import { Logger } from '../../../core/types.js';
 
 export class CliLogger implements Logger {
   info(msg: string, ...args: any[]) {
-    console.log(msg, ...args);
+    // CLI 诊断信息写入 stderr，避免污染 stdout（尤其是 --json 管道模式）
+    console.error(msg, ...args);
   }
 
   warn(msg: string, ...args: any[]) {
@@ -17,7 +18,7 @@ export class CliLogger implements Logger {
 
   debug(msg: string, ...args: any[]) {
     if (process.env.DEBUG) {
-      console.log(`[DEBUG] ${msg}`, ...args);
+      console.error(`[DEBUG] ${msg}`, ...args);
     }
   }
 }
