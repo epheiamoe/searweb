@@ -5,6 +5,7 @@ import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 import { createInterface } from 'readline';
 import { homedir } from 'os';
+import type { ProxyMode } from '../../../core/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, '../../../..');
@@ -59,10 +60,13 @@ async function configureSearxngManual(config: Record<string, any>) {
 // -------------------------------------------------------------------------
 
 /**
- * 判断字段名是否为敏感字段（apiKey/key/token/secret/password，不区分大小写）。
+ * 判断字段名是否为敏感字段（apiKey/key/token/secret/password，以及 proxyUrl 等包含凭证的 URL）。
  */
 function isSensitiveKey(key: string): boolean {
   const lower = key.toLowerCase();
+  // proxyUrl 可能包含 user:pass@host，必须单独处理（不能简单按 'url' 后缀匹配）。
+  const explicitKeys = new Set(['proxyurl', 'proxy_url']);
+  if (explicitKeys.has(lower)) return true;
   const sensitiveSuffixes = ['apikey', 'api_key', 'key', 'token', 'secret', 'password'];
   return sensitiveSuffixes.some(suffix =>
     lower === suffix ||
@@ -151,6 +155,8 @@ const KNOWN_NUMERIC_FIELDS = new Set([
   'cacheMaxSize',
   'cacheTtlSeconds',
   'ssePort',
+  'jinaLocalPort',
+  'proxyCacheTtlSeconds',
 ]);
 
 /**
@@ -306,6 +312,41 @@ async function runInteractiveWizard() {
     }
   }
 
+  // Local Jina Reader Deployment
+  console.log('\nLocal Jina Reader Deployment');
+  console.log('Jina Reader can be self-hosted via Docker for better availability and bypassing remote blocks.');
+  console.log('Image: ghcr.io/jina-ai/reader:oss (~5GB)\n');
+
+  const jinaAutoStart = await askYesNo('Enable local Jina Reader auto-deployment?', false);
+  if (jinaAutoStart) {
+    config.jinaAutoStart = true;
+    const jinaLocalPort = await ask('Local Jina Reader host port', '3005');
+    config.jinaLocalPort = parseInt(jinaLocalPort, 10) || 3005;
+    const jinaImage = await ask('Jina Reader Docker image', 'ghcr.io/jina-ai/reader:oss');
+    config.jinaImage = jinaImage;
+  }
+
+  const jinaLocalUrl = await ask('Use an existing local Jina Reader URL?', '');
+  if (jinaLocalUrl) {
+    config.jinaLocalUrl = jinaLocalUrl;
+  }
+
+  // Proxy Configuration
+  console.log('\nProxy Configuration');
+  console.log('searweb can auto-detect system proxies and silently retry through them when direct connections fail.\n');
+
+  const proxyModeInput = await ask('Proxy mode (auto/manual/off)', 'auto');
+  const proxyMode: ProxyMode = ['auto', 'manual', 'off'].includes(proxyModeInput) ? (proxyModeInput as ProxyMode) : 'auto';
+  config.proxyMode = proxyMode;
+
+  if (proxyMode === 'manual') {
+    const proxyUrl = await ask('Proxy URL', 'http://127.0.0.1:7890');
+    config.proxyUrl = proxyUrl;
+  }
+
+  const proxyAutoDetect = await askYesNo('Auto-detect system proxy?', true);
+  config.proxyAutoDetect = proxyAutoDetect;
+
   // SearXNG configuration
   console.log('\nSearXNG Configuration');
   console.log('SearXNG is a privacy-respecting metasearch engine.');
@@ -449,6 +490,27 @@ async function runInteractiveWizard() {
         if (config.searxngAutoStart) {
           environment.SEARXNG_AUTO_START = 'true';
         }
+        if (config.jinaAutoStart) {
+          environment.JINA_AUTO_START = 'true';
+        }
+        if (config.jinaLocalUrl) {
+          environment.JINA_LOCAL_URL = config.jinaLocalUrl;
+        }
+        if (config.jinaImage) {
+          environment.JINA_IMAGE = config.jinaImage;
+        }
+        if (config.jinaLocalPort) {
+          environment.JINA_LOCAL_PORT = String(config.jinaLocalPort);
+        }
+        if (config.proxyMode) {
+          environment.SEARWEB_PROXY_MODE = config.proxyMode;
+        }
+        if (config.proxyUrl) {
+          environment.SEARWEB_PROXY_URL = config.proxyUrl;
+        }
+        if (config.proxyAutoDetect === false) {
+          environment.SEARWEB_PROXY_AUTO_DETECT = 'false';
+        }
 
         // Add new configuration with environment variables (preferred over config.json path)
         opencodeConfig.mcp.searweb = {
@@ -479,6 +541,27 @@ async function runInteractiveWizard() {
       }
       if (config.searxngAutoStart) {
         manualEnv.SEARXNG_AUTO_START = 'true';
+      }
+      if (config.jinaAutoStart) {
+        manualEnv.JINA_AUTO_START = 'true';
+      }
+      if (config.jinaLocalUrl) {
+        manualEnv.JINA_LOCAL_URL = config.jinaLocalUrl;
+      }
+      if (config.jinaImage) {
+        manualEnv.JINA_IMAGE = config.jinaImage;
+      }
+      if (config.jinaLocalPort) {
+        manualEnv.JINA_LOCAL_PORT = String(config.jinaLocalPort);
+      }
+      if (config.proxyMode) {
+        manualEnv.SEARWEB_PROXY_MODE = config.proxyMode;
+      }
+      if (config.proxyUrl) {
+        manualEnv.SEARWEB_PROXY_URL = config.proxyUrl;
+      }
+      if (config.proxyAutoDetect === false) {
+        manualEnv.SEARWEB_PROXY_AUTO_DETECT = 'false';
       }
       console.log(
         JSON.stringify(
