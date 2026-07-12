@@ -284,16 +284,20 @@ export class ProxyService {
    * Derive a SOCKS5 fallback URL from an HTTP(S) proxy URL. Returns null for URLs that
    * already are SOCKS, are missing a host, or cannot be parsed. SOCKS5h is used so that
    * hostname resolution happens through the proxy, matching `curl --socks5-hostname`.
+   * Credentials from the original URL are preserved so that the SOCKS5 port can reuse them.
    */
   private deriveSocks5FallbackUrl(proxyUrl: string): string | null {
     const lower = proxyUrl.toLowerCase();
     if (lower.startsWith('socks')) return null;
     try {
       const parsed = new URL(proxyUrl);
-      const host = parsed.hostname;
-      const port = parsed.port;
-      if (!host || !port) return null;
-      return `socks5h://${host}:${port}`;
+      if (!parsed.hostname || !parsed.port) return null;
+      // Preserve credentials if present; URL encode them to handle special characters.
+      const credentials = parsed.username || parsed.password
+        ? `${encodeURIComponent(parsed.username)}:${encodeURIComponent(parsed.password)}@`
+        : '';
+      // parsed.host includes the port and wraps IPv6 addresses in brackets.
+      return `socks5h://${credentials}${parsed.host}`;
     } catch {
       return null;
     }

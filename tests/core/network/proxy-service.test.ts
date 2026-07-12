@@ -4,6 +4,8 @@ import https from 'https';
 import { EventEmitter } from 'events';
 import { Readable } from 'stream';
 import { ProxyService } from '../../../src/core/network/proxy-service.js';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+import { HttpsProxyAgent } from 'https-proxy-agent';
 import type { ProxyConfig, ProxyDiscovery, ProxyCandidate, ProxyState } from '../../../src/core/types.js';
 
 class TestLogger {
@@ -338,8 +340,10 @@ describe('ProxyService', () => {
     discovery.candidates = [{ url: 'http://127.0.0.1:7890', source: 'env' }];
 
     let requestCount = 0;
-    (https.request as any).mockImplementation((_options: any, callback: any) => {
+    const agents: any[] = [];
+    (https.request as any).mockImplementation((options: any, callback: any) => {
       requestCount++;
+      agents.push(options.agent);
       if (requestCount === 1) {
         // First attempt via HTTP proxy fails before TLS.
         return createMockRequest(undefined, undefined, new Error('ECONNRESET'));
@@ -358,7 +362,40 @@ describe('ProxyService', () => {
 
     expect(text).toBe('via socks fallback');
     expect(requestCount).toBe(2);
+    expect(agents[0]).toBeInstanceOf(HttpsProxyAgent);
+    expect(agents[1]).toBeInstanceOf(SocksProxyAgent);
     expect(stateStore.state?.activeProxyUrl).toBe('socks5h://127.0.0.1:7890');
+  });
+
+  it('preserves credentials in socks5h:// fallback URL', async () => {
+    discovery.candidates = [{ url: 'http://user:secret@127.0.0.1:7890', source: 'env' }];
+
+    let requestCount = 0;
+    (https.request as any).mockImplementation((_options: any, callback: any) => {
+      requestCount++;
+      if (requestCount === 1) {
+        return createMockRequest(undefined, undefined, new Error('ECONNRESET'));
+      }
+      const res = createMockResponse(200, 'via socks fallback with credentials');
+      return createMockRequest(callback, res);
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    const res = await service.fetch('https://example.com');
+    const text = await res.text();
+
+    expect(text).toBe('via socks fallback with credentials');
+    expect(stateStore.state?.activeProxyUrl).toBe('socks5h://user:secret@127.0.0.1:7890');
+
+    // Ensure credentials are masked in logs, not leaked.
+    const proxyDebugs = logger.messages
+      .filter(m => m.level === 'debug')
+      .map(m => m.args.join(' '));
+    const hasRawCredential = proxyDebugs.some(msg => msg.includes('secret'));
+    expect(hasRawCredential).toBe(false);
   });
 
   it('masks SOCKS proxy credentials in debug logs', async () => {
