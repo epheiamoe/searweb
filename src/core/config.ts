@@ -1,6 +1,6 @@
 // src/core/config.ts - Pure configuration loading (no singleton)
 
-import { ServerConfig } from './types.js';
+import { ServerConfig, ProxyMode } from './types.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
@@ -62,11 +62,40 @@ export function loadConfig(configPath?: string): ServerConfig {
   if (process.env.JINA_DISABLE_REMOTE) {
     config.jinaDisableRemote = process.env.JINA_DISABLE_REMOTE === 'true';
   }
+  if (process.env.JINA_AUTO_START) {
+    config.jinaAutoStart = process.env.JINA_AUTO_START === 'true';
+  }
+  if (process.env.JINA_LOCAL_URL) {
+    config.jinaLocalUrl = process.env.JINA_LOCAL_URL;
+  }
+  if (process.env.JINA_IMAGE) {
+    config.jinaImage = process.env.JINA_IMAGE;
+  }
+  if (process.env.JINA_LOCAL_PORT) {
+    config.jinaLocalPort = parseInt(process.env.JINA_LOCAL_PORT, 10);
+  }
   if (process.env.SEARXNG_URL) {
     config.searxngUrl = process.env.SEARXNG_URL;
   }
   if (process.env.SEARXNG_AUTO_START) {
     config.searxngAutoStart = process.env.SEARXNG_AUTO_START === 'true';
+  }
+
+  // Proxy configuration
+  if (process.env.SEARWEB_PROXY_MODE) {
+    config.proxyMode = process.env.SEARWEB_PROXY_MODE as ProxyMode;
+  }
+  if (process.env.SEARWEB_PROXY_URL) {
+    config.proxyUrl = process.env.SEARWEB_PROXY_URL;
+  }
+  if (process.env.SEARWEB_PROXY_AUTO_DETECT) {
+    config.proxyAutoDetect = process.env.SEARWEB_PROXY_AUTO_DETECT === 'true';
+  }
+  if (process.env.SEARWEB_PROXY_CACHE_TTL_SECONDS) {
+    config.proxyCacheTtlSeconds = parseInt(process.env.SEARWEB_PROXY_CACHE_TTL_SECONDS, 10);
+  }
+  if (process.env.SEARWEB_PROXY_CACHE_PATH) {
+    config.proxyCachePath = process.env.SEARWEB_PROXY_CACHE_PATH;
   }
 
   // LLM environment variables: SEARWEB_LLM_* 优先于 OPENAI_*

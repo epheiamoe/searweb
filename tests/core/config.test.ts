@@ -88,7 +88,7 @@ describe('loadConfig', () => {
 
   it('should override with environment variables', () => {
     (existsSync as any).mockReturnValue(false);
-    
+
     process.env.SEARWEB_TRANSPORT = 'sse';
     process.env.SEARWEB_SSE_PORT = '4000';
     process.env.JINA_API_KEYS = 'key1,key2,key3';
@@ -97,7 +97,7 @@ describe('loadConfig', () => {
     process.env.SEARXNG_AUTO_START = 'false';
     process.env.OPENAI_API_KEY = 'sk-test-key';
     process.env.OPENAI_MODEL = 'gpt-4o';
-    
+
     const config = loadConfig();
 
     expect(config.transport).toBe('sse');
@@ -111,6 +111,32 @@ describe('loadConfig', () => {
       apiKey: 'sk-test-key',
       model: 'gpt-4o',
     });
+  });
+
+  it('should load Jina Reader and proxy environment variables', () => {
+    (existsSync as any).mockReturnValue(false);
+
+    process.env.JINA_AUTO_START = 'true';
+    process.env.JINA_LOCAL_URL = 'http://localhost:3005';
+    process.env.JINA_IMAGE = 'ghcr.io/jina-ai/reader:oss';
+    process.env.JINA_LOCAL_PORT = '3005';
+    process.env.SEARWEB_PROXY_MODE = 'manual';
+    process.env.SEARWEB_PROXY_URL = 'http://127.0.0.1:7890';
+    process.env.SEARWEB_PROXY_AUTO_DETECT = 'false';
+    process.env.SEARWEB_PROXY_CACHE_TTL_SECONDS = '1800';
+    process.env.SEARWEB_PROXY_CACHE_PATH = 'custom-cache.json';
+
+    const config = loadConfig();
+
+    expect(config.jinaAutoStart).toBe(true);
+    expect(config.jinaLocalUrl).toBe('http://localhost:3005');
+    expect(config.jinaImage).toBe('ghcr.io/jina-ai/reader:oss');
+    expect(config.jinaLocalPort).toBe(3005);
+    expect(config.proxyMode).toBe('manual');
+    expect(config.proxyUrl).toBe('http://127.0.0.1:7890');
+    expect(config.proxyAutoDetect).toBe(false);
+    expect(config.proxyCacheTtlSeconds).toBe(1800);
+    expect(config.proxyCachePath).toBe('custom-cache.json');
   });
 
   it('should prefer SEARWEB_LLM_API_KEY over OPENAI_API_KEY', () => {

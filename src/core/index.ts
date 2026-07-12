@@ -8,6 +8,7 @@ import {
   FetchOptions,
   ResearchOptions,
   SearxngStatus,
+  JinaReaderStatus,
 } from './types.js';
 import { loadConfig } from './config.js';
 import { JinaClient } from './fetch/jina-client.js';
@@ -73,6 +74,24 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
 
     async checkSearxngHealth() {
       return checkSearxngHealth(_searxngUrl);
+    },
+
+    // Jina Reader local deployment stubs: implemented by the Docker sub-task.
+    async ensureJinaReaderRunning(): Promise<JinaReaderStatus> {
+      return {
+        url: config.jinaLocalUrl || '',
+        healthy: false,
+        autoManaged: false,
+        error: 'Jina Reader local deployment not yet implemented',
+      };
+    },
+
+    async checkJinaReaderHealth(): Promise<{ healthy: boolean; url?: string; error?: string }> {
+      return {
+        healthy: false,
+        url: config.jinaLocalUrl,
+        error: 'Jina Reader local deployment not yet implemented',
+      };
     },
   };
 }

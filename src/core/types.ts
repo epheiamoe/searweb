@@ -22,8 +22,27 @@ export class NullLogger implements Logger {
   debug() {}
 }
 
+// ========== Proxy Configuration ==========
+export type ProxyMode = 'auto' | 'manual' | 'off';
+
+export interface ProxyConfig {
+  proxyMode?: ProxyMode;
+  proxyUrl?: string;
+  proxyAutoDetect?: boolean;
+  proxyCacheTtlSeconds?: number;
+  proxyCachePath?: string;
+}
+
+export interface ProxyState {
+  /** Current effective proxy URL; null means direct connection. */
+  activeProxyUrl: string | null;
+  source: 'config' | 'env' | 'os' | 'direct' | 'cache';
+  /** ISO 8601 timestamp of last successful verification. */
+  lastVerifiedAt: string;
+}
+
 // ========== Configuration ==========
-export interface ServerConfig {
+export interface ServerConfig extends ProxyConfig {
   // Transport configuration (MCP-specific, core doesn't use directly)
   transport?: 'stdio' | 'sse';
   ssePort?: number;
@@ -32,6 +51,12 @@ export interface ServerConfig {
   jinaApiKeys?: string[];
   jinaDisableRemote?: boolean;
   jinaLocalFallback?: boolean;
+
+  // Jina Reader local Docker deployment
+  jinaAutoStart?: boolean;
+  jinaLocalUrl?: string;
+  jinaImage?: string;
+  jinaLocalPort?: number;
 
   // SearXNG configuration
   searxngUrl?: string;
@@ -53,6 +78,13 @@ export interface ServerConfig {
    * them, working around the MCP protocol's lack of async tool discovery.
    */
   exposeUnavailableTools?: boolean;
+}
+
+export interface JinaReaderStatus {
+  url: string;
+  healthy: boolean;
+  autoManaged: boolean;
+  error?: string;
 }
 
 export interface LLMConfig {
@@ -178,4 +210,8 @@ export interface CoreServices {
   // Docker / SearXNG
   ensureSearxngRunning(): Promise<SearxngStatus>;
   checkSearxngHealth(): Promise<{ healthy: boolean; url?: string; error?: string }>;
+
+  // Jina Reader local deployment
+  ensureJinaReaderRunning(): Promise<JinaReaderStatus>;
+  checkJinaReaderHealth(): Promise<{ healthy: boolean; url?: string; error?: string }>;
 }
