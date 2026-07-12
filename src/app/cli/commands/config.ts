@@ -250,7 +250,7 @@ async function setConfigValues(setArgs: string[]): Promise<void> {
     }
 
     setByPath(config, key, value);
-    console.log(`Updated config.json: ${key}=${rawValue}`);
+    console.error(`Updated config.json: ${key}=${rawValue}`);
   }
 
   try {

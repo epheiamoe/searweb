@@ -91,6 +91,7 @@ describe('maskSecrets', () => {
 describe('configCommand', () => {
   let configFile: string;
   let logSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     configFile = '{}';
@@ -100,6 +101,7 @@ describe('configCommand', () => {
       configFile = data as string;
     });
     logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   });
 
   afterEach(() => {
@@ -138,6 +140,12 @@ describe('configCommand', () => {
     const parsed = lastJsonOutput();
     expect(parsed.proxyCacheTtlSeconds).toBe(7200);
     expect(typeof parsed.proxyCacheTtlSeconds).toBe('number');
+  });
+
+  it('outputs update messages to stderr so stdout stays JSON-clean', async () => {
+    await configCommand({ set: ['jinaAutoStart=true'], show: true });
+    const errorCalls = errorSpy.mock.calls as unknown[][];
+    expect(errorCalls.some((call) => String(call[0]).startsWith('Updated config.json:'))).toBe(true);
   });
 });
 

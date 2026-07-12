@@ -20,7 +20,7 @@ import { ResearchService } from './research/index.js';
 import { ProxyService } from './network/proxy-service.js';
 import { setDefaultProxyService } from './network/proxied-fetch.js';
 import { ensureSearxngRunning } from './docker/searxng.js';
-import { ensureJinaReaderRunning, checkJinaReaderHealth } from './docker/jina-reader.js';
+import { ensureJinaReaderRunning, checkJinaReaderHealth, findExistingJinaReader } from './docker/jina-reader.js';
 
 export { loadConfig };
 export * from './types.js';
@@ -54,6 +54,7 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
 
   let _searxngUrl: string | undefined = config.searxngUrl;
   let _searxngHealthy = false;
+  let _jinaReaderUrl: string | undefined = config.jinaLocalUrl;
 
   return {
     config,
@@ -100,11 +101,24 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
     // Jina Reader local deployment
     async ensureJinaReaderRunning(): Promise<JinaReaderStatus> {
       const status = await ensureJinaReaderRunning(config, log);
+      if (status.url) {
+        _jinaReaderUrl = status.url;
+      }
       return status;
     },
 
     async checkJinaReaderHealth() {
-      return checkJinaReaderHealth(config.jinaLocalUrl || '');
+      const url = _jinaReaderUrl || config.jinaLocalUrl || '';
+      if (!url) {
+        // Try to discover an existing auto-managed container
+        const existing = await findExistingJinaReader();
+        if (existing && existing.url) {
+          _jinaReaderUrl = existing.url;
+          return checkJinaReaderHealth(existing.url);
+        }
+        return { healthy: false, error: 'No Jina Reader URL configured' };
+      }
+      return checkJinaReaderHealth(url);
     },
   };
 }
