@@ -12,3 +12,6 @@ coverage/
 
 .wiki/
 .swarm/
+
+*.tgz
+

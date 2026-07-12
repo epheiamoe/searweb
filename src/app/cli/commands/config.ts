@@ -8,8 +8,7 @@ import { homedir } from 'os';
 import type { ProxyMode } from '../../../core/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const rootDir = join(__dirname, '../../../..');
-const defaultConfigPath = join(rootDir, 'config.json');
+const defaultConfigPath = resolve('config.json');
 const opencodeConfigPath = join(homedir(), '.config', 'opencode', 'opencode.jsonc');
 
 function ask(question: string, defaultValue: string = ''): Promise<string> {
