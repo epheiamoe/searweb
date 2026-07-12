@@ -34,12 +34,12 @@ export class FetchService {
   private ruleEngine: RuleEngine;
   private logger: Logger;
 
-  constructor(config: ServerConfig, logger: Logger) {
+  constructor(config: ServerConfig, logger: Logger, jinaClient?: JinaClient) {
     this.cache = new MemoryCache(
       config.cacheMaxSize || 100,
       config.cacheTtlSeconds || 1800
     );
-    this.jinaClient = new JinaClient({
+    this.jinaClient = jinaClient || new JinaClient({
       apiKeys: config.jinaApiKeys,
       disableRemote: config.jinaDisableRemote,
       localFallback: config.jinaLocalFallback,

@@ -1,4 +1,4 @@
-// src/core/research/index.ts - LLM research sub-agent with streaming support
+// src/core/research/index.ts - LLM research sub-agent with streaming support (proxy-aware)
 
 import {
   ServerConfig,
@@ -14,6 +14,7 @@ import { FetchService } from '../fetch/index.js';
 import { searchDDG } from '../search/ddg.js';
 import { searchSearxng } from '../search/searxng.js';
 import { searchWikipedia } from '../search/wikipedia.js';
+import { ProxyService } from '../network/proxy-service.js';
 import { runResearchAgent, ToolExecutor, AgentState } from './agent.js';
 import {
   generateSessionId,
@@ -28,11 +29,20 @@ export class ResearchService {
   private fetchService: FetchService;
   private jinaClient: JinaClient;
   private searxngUrl?: string;
+  private proxyService?: ProxyService;
 
-  constructor(config: ServerConfig, logger: Logger, existingFetchService?: FetchService, existingJinaClient?: JinaClient, searxngUrl?: string) {
+  constructor(
+    config: ServerConfig,
+    logger: Logger,
+    existingFetchService?: FetchService,
+    existingJinaClient?: JinaClient,
+    searxngUrl?: string,
+    proxyService?: ProxyService,
+  ) {
     this.config = config;
     this.logger = logger;
     this.searxngUrl = searxngUrl;
+    this.proxyService = proxyService;
     this.jinaClient = existingJinaClient || new JinaClient({
       apiKeys: config.jinaApiKeys,
       disableRemote: config.jinaDisableRemote,
@@ -46,9 +56,14 @@ export class ResearchService {
       throw new Error('LLM not configured');
     }
 
+    const baseURL = this.config.llm.baseURL || 'https://api.openai.com';
+    const agent = this.proxyService?.getAgentForUrl(baseURL);
+
     const openai = new OpenAI({
       apiKey: this.config.llm.apiKey,
       baseURL: this.config.llm.baseURL,
+      // OpenAI SDK v4 only exposes httpAgent; it is used for both HTTP and HTTPS.
+      httpAgent: agent,
     });
 
     // Determine budget limits

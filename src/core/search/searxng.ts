@@ -1,6 +1,7 @@
-// src/core/search/searxng.ts - SearXNG search implementation with container management
+// src/core/search/searxng.ts - SearXNG search implementation with container management (proxy-aware)
 
 import { SearchResult } from '../types.js';
+import { proxiedFetch } from '../network/proxied-fetch.js';
 
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 1000;
@@ -50,7 +51,7 @@ export async function searchSearxng(
 
   return retrySearch(
     async () => {
-      const response = await fetch(searchUrl, {
+      const response = await proxiedFetch(searchUrl, {
         headers: {
           'Accept': 'application/json',
           'User-Agent': 'searweb/1.0',
@@ -101,7 +102,7 @@ export async function checkSearxngHealth(searxngUrl?: string): Promise<{ healthy
   }
 
   try {
-    const response = await fetch(`${searxngUrl}/healthz`, {
+    const response = await proxiedFetch(`${searxngUrl}/healthz`, {
       method: 'GET',
       signal: AbortSignal.timeout(5000),
     });
