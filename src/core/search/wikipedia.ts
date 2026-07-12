@@ -10,7 +10,11 @@ export async function searchWikipedia(
 ): Promise<SearchResult[]> {
   const searchUrl = `https://${lang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*&srlimit=${limit}`;
 
-  const response = await proxiedFetch(searchUrl);
+  const response = await proxiedFetch(searchUrl, {
+    headers: {
+      'User-Agent': 'searweb/0.2.0 (https://github.com/epheiamoe/searweb)',
+    },
+  });
 
   if (!response.ok) {
     throw new Error(`Wikipedia search failed: ${response.status}`);

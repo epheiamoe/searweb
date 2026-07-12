@@ -39,7 +39,11 @@ describe('searchWikipedia', () => {
 
     expect(directFetch).toHaveBeenCalledWith(
       'https://en.wikipedia.org/w/api.php?action=query&list=search&srsearch=example&format=json&origin=*&srlimit=5',
-      undefined
+      {
+        headers: {
+          'User-Agent': 'searweb/0.2.0 (https://github.com/epheiamoe/searweb)',
+        },
+      }
     );
     expect(results).toHaveLength(1);
     expect(results[0]).toEqual({
