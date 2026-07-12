@@ -31,11 +31,13 @@ node scripts/setup.js
 交互式向导会自动：
 
 1. ✅ 询问是否需要 Jina.ai API key（推荐）
-2. ✅ 询问是否需要 SearXNG（可选）
-3. ✅ 询问是否需要 LLM 研究功能（可选）
-4. ✅ 自动创建 `config.json`
-5. ✅ 自动更新 `opencode.jsonc`
-6. ✅ 显示配置摘要
+2. ✅ 询问是否需要本地 Jina Reader（可选）
+3. ✅ 询问是否需要代理自动发现（可选）
+4. ✅ 询问是否需要 SearXNG（可选）
+5. ✅ 询问是否需要 LLM 研究功能（可选）
+6. ✅ 自动创建 `config.json`
+7. ✅ 自动更新 `opencode.jsonc`
+8. ✅ 显示配置摘要
 
 ## 配置后可用工具
 
@@ -46,7 +48,7 @@ node scripts/setup.js
 | `search_web_ddg` | ✅ | 无需配置 |
 | `fetch_web_markdown` | ✅ | 无需配置 |
 | `search_wikipedia` | ✅ | 无需配置 |
-| `search_web_searxng` | ❌ | `searxngUrl` |
+| `search_web_searxng` | ❌ | `searxngUrl` 或 `searxngAutoStart` |
 | `llm_research` | ❌ | `llm.apiKey` |
 
 ## 配置示例
@@ -60,8 +62,10 @@ node scripts/setup.js
 
 ### 完整配置
 1. Jina API key
-2. SearXNG URL
-3. LLM API key
+2. 本地 Jina Reader（自动启动或手动指定 URL）
+3. SearXNG URL
+4. LLM API key
+5. 代理模式（auto / manual / off）
 
 ## 手动配置
 
@@ -77,12 +81,16 @@ node scripts/setup.js
 searweb config --set llm.apiKey=sk-xxx
 searweb config --set llm.model=gpt-4o-mini
 searweb config --set searxngAutoStart=true
+searweb config --set jinaAutoStart=true
+searweb config --set jinaLocalUrl=http://localhost:3005
+searweb config --set proxyMode=manual --set proxyUrl=http://127.0.0.1:7890
 searweb config --show
 ```
 
 ## 获取 API Keys
 
 - **Jina.ai**: https://jina.ai/reader (免费)
+- **Jina Reader Docker**: `ghcr.io/jina-ai/reader:oss`（约 5 GB）
 - **OpenAI**: https://platform.openai.com
 - **SearXNG**: `docker run -d -p 8080:8080 searxng/searxng`
 
@@ -95,6 +103,11 @@ $env:SEARWEB_LLM_API_KEY="sk-xxx"
 $env:SEARWEB_LLM_MODEL="gpt-4o-mini"
 $env:SEARWEB_LLM_BASEURL="https://api.openai.com/v1"
 $env:SEARWEB_LLM_PROVIDER="openai"
+
+$env:JINA_AUTO_START="false"
+$env:JINA_LOCAL_URL="http://localhost:3005"
+$env:SEARWEB_PROXY_MODE="auto"
+$env:SEARWEB_PROXY_AUTO_DETECT="true"
 ```
 
 旧的 `OPENAI_API_KEY` / `OPENAI_MODEL` 仍然兼容。

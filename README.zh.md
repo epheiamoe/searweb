@@ -60,6 +60,15 @@ searweb research --rm <id> -y   # 删除会话
 
 # 交互式配置向导
 searweb config
+
+# 非交互式配置
+searweb config --show
+searweb config --set llm.apiKey=sk-xxx
+searweb config --set searxngAutoStart=true
+searweb config --set jinaApiKeys=key1,key2
+searweb config --set jinaAutoStart=true
+searweb config --set jinaLocalUrl=http://localhost:3005
+searweb config --set proxyMode=manual --set proxyUrl=http://127.0.0.1:7890
 ```
 
 ### MCP 模式（供 AI 智能体使用）
@@ -131,6 +140,10 @@ searweb --version
         "OPENAI_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
         "JINA_API_KEYS": "<可选>",
+        "JINA_AUTO_START": "false",
+        "JINA_LOCAL_URL": "<可选，例如 http://localhost:3005>",
+        "SEARWEB_PROXY_MODE": "auto",
+        "SEARWEB_PROXY_URL": "<可选，例如 http://127.0.0.1:7890>",
         "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       }
     }
@@ -157,6 +170,10 @@ searweb --version
         "OPENAI_API_KEY": "<询问用户>",
         "OPENAI_MODEL": "gpt-4o-mini",
         "SEARXNG_AUTO_START": "true",
+        "JINA_AUTO_START": "false",
+        "JINA_LOCAL_URL": "<可选，例如 http://localhost:3005>",
+        "SEARWEB_PROXY_MODE": "auto",
+        "SEARWEB_PROXY_URL": "<可选，例如 http://127.0.0.1:7890>",
         "SEARWEB_EXPOSE_UNAVAILABLE_TOOLS": "true"
       },
       "timeout": 30000
@@ -267,8 +284,101 @@ opencode mcp debug searweb
 - `SEARWEB_TRANSPORT` — 传输模式：`stdio`（默认）或 `sse`
 - `SEARWEB_SSE_PORT` — SSE 服务器端口（默认：3000）
 - `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS` — 即使 SearXNG 和 `llm_research` 未配置，也在 MCP 中暴露这些工具。调用时会返回配置说明而不是静默隐藏。适用于 MCP 客户端缓存工具列表、希望 AI 智能体发现可选工具的场景。
+- `JINA_AUTO_START` — 自动启动本地 Jina Reader Docker 容器（`true`/`false`，默认：`false`）
+- `JINA_LOCAL_URL` — 已存在的本地 Jina Reader 地址，例如 `http://localhost:3005`
+- `JINA_IMAGE` — Jina Reader Docker 镜像（默认：`ghcr.io/jina-ai/reader:oss`）
+- `JINA_LOCAL_PORT` — 自动启动的 Jina Reader 容器所绑定的主机端口（默认：`3005`）
+- `SEARWEB_PROXY_MODE` — 代理模式：`auto`（默认）、`manual` 或 `off`
+- `SEARWEB_PROXY_URL` — 手动指定的代理地址，例如 `http://127.0.0.1:7890`。可能包含凭据，请参见下方安全说明。
+- `SEARWEB_PROXY_AUTO_DETECT` — 自动从环境变量和操作系统设置中探测系统代理（`true`/`false`，默认：`true`）
+- `SEARWEB_PROXY_CACHE_TTL_SECONDS` — 代理缓存有效时间，单位秒（默认：`3600`）
+- `SEARWEB_PROXY_CACHE_PATH` — 代理缓存文件路径（默认：`proxy-cache.json`）
+- `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY`（及对应小写形式）— 在 `auto` 模式下会被探测的标准代理环境变量
+
+> **安全提示**：如果 `SEARWEB_PROXY_URL` 包含凭据（如 `http://user:pass@host`），该 URL 会原样保存在 `config.json` 和 `proxy-cache.json` 中。`searweb config --show` 会隐藏该值，调试日志也会脱敏，但底层文件仍包含明文 URL。请务必将这些文件排除在版本控制之外，并限制文件访问权限。`proxy-cache.json` 默认已加入 `.gitignore`。
 
 > **MCP 使用建议**：通过 MCP 客户端的 `env`/`environment` 字段传递环境变量，而不是将 API 密钥写入 config.json 文件，这样更安全。
+
+## 本地 Jina Reader 部署
+
+Searweb 可以本地运行 [Jina Reader](https://github.com/jina-ai/reader) Docker 容器，而不完全依赖远程 `r.jina.ai` 服务。本地部署可以提高稳定性，并避免远程速率限制或访问阻断。
+
+默认值：
+- **镜像**：`ghcr.io/jina-ai/reader:oss`（约 5 GB，首次拉取可能耗时较长）
+- **容器名**：`searweb-jina-reader`
+- **主机端口**：`3005`（端口被占用时自动向后递增）
+- **容器内部端口**：`8081`（HTTP/1.1 回退；镜像同时暴露 `8080` 作为 h2c，但 Node.js 原生 `fetch` 无法使用 h2c）
+
+启用自动部署：
+```bash
+searweb config --set jinaAutoStart=true
+# 或使用交互式向导
+searweb config
+```
+
+使用已经运行的 Reader，而不是自动启动新容器：
+```bash
+searweb config --set jinaLocalUrl=http://localhost:3005
+```
+
+也可以覆盖镜像或主机端口：
+```bash
+searweb config --set jinaImage=ghcr.io/jina-ai/reader:oss
+searweb config --set jinaLocalPort=3005
+```
+
+在 `fetch_web_markdown` 中，本地 Reader 是第一优先级回退：
+1. 本地 Jina Reader（如果已配置或自动启动成功）
+2. 远程 Jina API（`r.jina.ai`，除非 `jinaDisableRemote=true`）
+3. 本地直接抓取 + Turndown（除非 `jinaLocalFallback=false`）
+
+## 代理自动发现
+
+Searweb 中的所有外部 HTTP(S) 请求（Jina、DuckDuckGo、SearXNG、Wikipedia、LLM 提供商）都可以在直接连接失败时自动发现并切换到可用的系统代理。
+
+### 代理模式
+
+- `auto`（默认）：尝试缓存代理 → 直接连接 → 发现环境变量和操作系统设置 → 逐个候选重试 → 最终回退直连。
+- `manual`：仅使用 `proxyUrl`。如果该代理失败，则回退到直接连接。
+- `off`：从不使用代理，始终直接连接。
+
+### `auto` 模式如何工作
+
+在 `auto` 模式下，当直接请求失败时，searweb 会按以下优先级静默发现代理候选：
+
+1. `proxy-cache.json` 中缓存的代理（如果未过期）
+2. 环境变量：HTTPS 目标使用 `HTTPS_PROXY` / `https_proxy` / `ALL_PROXY` / `all_proxy`；HTTP 目标使用 `HTTP_PROXY` / `http_proxy` / `ALL_PROXY` / `all_proxy`
+3. 操作系统代理设置（当 `proxyAutoDetect` 为 `true` 时）：
+   - Windows：注册表（`ProxyServer` / `ProxyEnable`）
+   - macOS：`networksetup`
+   - Linux（GNOME）：`gsettings`
+4. 最终回退到直接连接
+
+在 `manual` 模式下，仅使用配置的 `proxyUrl`；失败后回退到直接连接。
+
+第一个可用的代理会被缓存到 `proxy-cache.json`，并在后续请求中复用，直到它失败或缓存 TTL 过期（默认 1 小时）。失败时会静默重试；设置 `DEBUG=1` 时，调试详情会写入 stderr。
+
+### 配置代理
+
+通过 CLI 配置：
+```bash
+searweb config --set proxyMode=manual --set proxyUrl=http://127.0.0.1:7890
+searweb config --set proxyMode=auto --set proxyAutoDetect=true
+searweb config --set proxyMode=off
+```
+
+或通过环境变量：
+```bash
+export SEARWEB_PROXY_MODE=manual
+export SEARWEB_PROXY_URL=http://127.0.0.1:7890
+export SEARWEB_PROXY_AUTO_DETECT=true
+export SEARWEB_PROXY_CACHE_TTL_SECONDS=3600
+export SEARWEB_PROXY_CACHE_PATH=proxy-cache.json
+```
+
+### 安全提示
+
+`proxyUrl` 可能包含凭据（如 `http://user:pass@host`）。该 URL 需要原样保存在 `config.json` 和 `proxy-cache.json` 中，以便代理 agent 进行认证。`searweb config --show` 会隐藏该值，调试日志也会脱敏，但底层文件仍包含明文 URL。请务必将这些文件排除在版本控制之外，并限制文件访问权限。`proxy-cache.json` 默认已加入 `.gitignore`。
 
 ## CLI 命令
 
@@ -389,9 +499,27 @@ SOURCES
 
 交互式配置向导，将引导你完成：
 - Jina.ai API 密钥配置
+- 本地 Jina Reader 部署
+- 代理自动发现配置
 - SearXNG Docker 设置
 - LLM 提供商配置
 - OpenCode 集成
+
+也支持非交互式配置：
+
+```bash
+# 显示当前配置（敏感信息已脱敏）
+searweb config --show
+
+# 设置单个值（支持点号路径）
+searweb config --set llm.apiKey=sk-xxx
+searweb config --set searxngAutoStart=true
+searweb config --set jinaApiKeys=key1,key2
+searweb config --set jinaAutoStart=true
+searweb config --set jinaLocalUrl=http://localhost:3005
+searweb config --set proxyMode=manual --set proxyUrl=http://127.0.0.1:7890
+searweb config --set proxyCacheTtlSeconds=3600
+```
 
 ### `searweb server [config]`
 

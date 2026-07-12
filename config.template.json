@@ -10,9 +10,19 @@
   ],
   "jinaDisableRemote": false,
   "jinaLocalFallback": true,
+  "jinaAutoStart": false,
+  "jinaLocalUrl": "",
+  "jinaImage": "ghcr.io/jina-ai/reader:oss",
+  "jinaLocalPort": 3005,
 
   "searxngUrl": "http://localhost:8080",
   "searxngAutoStart": false,
+
+  "proxyMode": "auto",
+  "proxyUrl": "",
+  "proxyAutoDetect": true,
+  "proxyCacheTtlSeconds": 3600,
+  "proxyCachePath": "proxy-cache.json",
 
   "llm": {
     "provider": "openai",

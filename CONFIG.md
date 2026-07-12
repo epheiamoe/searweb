@@ -32,6 +32,26 @@ Open `config.json` and fill in:
   - Without this: `search_web_searxng` tool won't be available
   - With this: More powerful search with customizable engines
 
+## New Configuration Fields
+
+This section documents fields added for local Jina Reader deployment and proxy auto-discovery.
+
+### Jina Reader Local Deployment
+- `jinaAutoStart` — Automatically start a local Jina Reader Docker container (`boolean`, default: `false`)
+- `jinaLocalUrl` — URL of an existing local Jina Reader, e.g. `http://localhost:3005` (`string`)
+- `jinaImage` — Jina Reader Docker image (`string`, default: `ghcr.io/jina-ai/reader:oss`)
+- `jinaLocalPort` — Host port for the auto-started container (`number`, default: `3005`)
+
+### Proxy Auto-Discovery
+- `proxyMode` — Proxy mode (`string`, default: `auto`)
+  - `auto`: cached proxy → env vars → OS settings → direct
+  - `manual`: use only `proxyUrl`
+  - `off`: never use a proxy
+- `proxyUrl` — Manual proxy URL, e.g. `http://127.0.0.1:7890` (`string`). May contain credentials.
+- `proxyAutoDetect` — Auto-detect system proxy from env vars and OS settings (`boolean`, default: `true`)
+- `proxyCacheTtlSeconds` — How long a working proxy is cached (`number`, default: `3600`)
+- `proxyCachePath` — Path to proxy cache file (`string`, default: `proxy-cache.json`)
+
 ## Step 3: Update OpenCode Config
 
 Edit: `C:\Users\Epheia\.config\opencode\opencode.jsonc`
@@ -72,6 +92,15 @@ $env:SEARWEB_LLM_MODEL="gpt-4o-mini"
 $env:SEARWEB_LLM_BASEURL="https://api.openai.com/v1"
 $env:SEARWEB_LLM_PROVIDER="openai"
 $env:SEARXNG_URL="http://localhost:8080"
+$env:JINA_AUTO_START="false"
+$env:JINA_LOCAL_URL="http://localhost:3005"
+$env:JINA_IMAGE="ghcr.io/jina-ai/reader:oss"
+$env:JINA_LOCAL_PORT="3005"
+$env:SEARWEB_PROXY_MODE="auto"
+$env:SEARWEB_PROXY_URL="http://127.0.0.1:7890"
+$env:SEARWEB_PROXY_AUTO_DETECT="true"
+$env:SEARWEB_PROXY_CACHE_TTL_SECONDS="3600"
+$env:SEARWEB_PROXY_CACHE_PATH="proxy-cache.json"
 ```
 
 ### Priority
@@ -93,6 +122,16 @@ $env:SEARXNG_URL="http://localhost:8080"
 | `SEARWEB_TRANSPORT` | MCP transport: `stdio` or `sse` | `stdio` |
 | `SEARWEB_SSE_PORT` | SSE server port | `3000` |
 | `SEARWEB_EXPOSE_UNAVAILABLE_TOOLS` | Expose SearXNG/`llm_research` in MCP even when not configured | `false` |
+| `JINA_AUTO_START` | Auto-start local Jina Reader Docker container (`true`/`false`) | `false` |
+| `JINA_LOCAL_URL` | Existing local Jina Reader URL, e.g. `http://localhost:3005` | — |
+| `JINA_IMAGE` | Jina Reader Docker image | `ghcr.io/jina-ai/reader:oss` |
+| `JINA_LOCAL_PORT` | Host port for auto-started Jina Reader | `3005` |
+| `SEARWEB_PROXY_MODE` | Proxy mode: `auto`, `manual`, or `off` | `auto` |
+| `SEARWEB_PROXY_URL` | Manual proxy URL (may contain credentials) | — |
+| `SEARWEB_PROXY_AUTO_DETECT` | Auto-detect system proxy (`true`/`false`) | `true` |
+| `SEARWEB_PROXY_CACHE_TTL_SECONDS` | Proxy cache TTL in seconds | `3600` |
+| `SEARWEB_PROXY_CACHE_PATH` | Proxy cache file path | `proxy-cache.json` |
+| `HTTP_PROXY` / `HTTPS_PROXY` / `ALL_PROXY` | Standard proxy env vars (lowercase variants also supported) | — |
 
 ### Examples
 
@@ -105,8 +144,19 @@ $env:SEARWEB_LLM_PROVIDER="openai"
 
 # Optional enhancers
 $env:JINA_API_KEYS="jina_xxx,jina_yyy"
+$env:JINA_AUTO_START="false"
+$env:JINA_LOCAL_URL="http://localhost:3005"
 $env:SEARXNG_URL="http://localhost:8080"
 $env:SEARXNG_AUTO_START="true"
+
+# Proxy auto-discovery
+$env:SEARWEB_PROXY_MODE="auto"
+$env:SEARWEB_PROXY_AUTO_DETECT="true"
+$env:SEARWEB_PROXY_CACHE_TTL_SECONDS="3600"
+
+# Or manual proxy (URL may contain credentials; keep it secret)
+# $env:SEARWEB_PROXY_MODE="manual"
+# $env:SEARWEB_PROXY_URL="http://127.0.0.1:7890"
 
 # MCP behavior
 $env:SEARWEB_TRANSPORT="stdio"
@@ -134,12 +184,24 @@ searweb config --set llm.provider=openai-compatible
 searweb config --set llm.baseURL=https://api.deepseek.com/v1
 searweb config --set searxngAutoStart=true
 searweb config --set jinaApiKeys=key1,key2
+searweb config --set jinaAutoStart=true
+searweb config --set jinaLocalUrl=http://localhost:3005
+searweb config --set proxyMode=manual --set proxyUrl=http://127.0.0.1:7890
+searweb config --set proxyCacheTtlSeconds=3600
 
 # Set multiple values
 searweb config --set llm.apiKey=sk-xxx --set llm.model=gpt-4o-mini --show
 ```
 
-`--show` masks fields whose names end with `apiKey`, `api_key`, `key`, `token`, `secret`, or `password`.
+`--show` masks fields whose names end with `apiKey`, `api_key`, `key`, `token`, `secret`, `password`, or `proxyUrl`.
+
+### Security Note on Proxy Credentials
+
+`proxyUrl` may contain credentials in the form `http://user:pass@host:port`. This URL is stored **as-is** in `config.json` and `proxy-cache.json` because the proxy agent needs the credentials to authenticate. Searweb masks the value in `searweb config --show` and in debug logs, but the underlying files still contain the plaintext URL. To protect these credentials:
+
+- Keep `config.json` and `proxy-cache.json` out of version control. `proxy-cache.json` is gitignored by default.
+- Restrict file permissions on `config.json` and `proxy-cache.json`.
+- Prefer a proxy URL without embedded credentials, or set the proxy via environment variables (`SEARWEB_PROXY_URL`, `HTTP_PROXY`, etc.) so the value does not persist in `config.json`.
 
 ## JSON Mode Spinner Behavior
 
@@ -182,8 +244,16 @@ No configuration needed!
 ```json
 {
   "jinaApiKeys": ["jina_xxx"],
+  "jinaAutoStart": false,
+  "jinaLocalUrl": "http://localhost:3005",
+  "jinaImage": "ghcr.io/jina-ai/reader:oss",
+  "jinaLocalPort": 3005,
   "searxngUrl": "http://localhost:8080",
   "searxngAutoStart": true,
+  "proxyMode": "auto",
+  "proxyAutoDetect": true,
+  "proxyCacheTtlSeconds": 3600,
+  "proxyCachePath": "proxy-cache.json",
   "llm": {
     "apiKey": "sk-xxx",
     "model": "gpt-4o-mini"
