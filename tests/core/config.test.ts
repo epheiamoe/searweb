@@ -14,6 +14,10 @@ vi.mock('path', () => ({
   join: vi.fn((...args: string[]) => args.join('/')),
 }));
 
+vi.mock('os', () => ({
+  homedir: vi.fn(() => '/home/user'),
+}));
+
 import { readFileSync, existsSync } from 'fs';
 
 // Helper to reset module state between tests
@@ -196,6 +200,38 @@ describe('loadConfig', () => {
     const config = loadConfig();
 
     expect(config.llm?.model).toBe('gpt-4o-mini');
+  });
+
+  it('should load from user config directory when CWD config is missing', () => {
+    const userConfig = { jinaAutoStart: true };
+    const userConfigPath = '/home/user/.config/searweb/config.json';
+    
+    (existsSync as any)
+      .mockImplementation((path: string) => path === userConfigPath);
+    (readFileSync as any).mockReturnValue(JSON.stringify(userConfig));
+    
+    const config = loadConfig();
+
+    expect(config.jinaAutoStart).toBe(true);
+    expect(readFileSync).toHaveBeenCalledWith(userConfigPath, 'utf-8');
+    expect(readFileSync).toHaveBeenCalledTimes(1);
+  });
+
+  it('should prefer CWD config over user config directory', () => {
+    const cwdConfig = { jinaAutoStart: false };
+    const userConfig = { jinaAutoStart: true };
+    const cwdPath = 'config.json';
+    const userConfigPath = '/home/user/.config/searweb/config.json';
+    
+    (existsSync as any)
+      .mockImplementation((path: string) => path === cwdPath || path === userConfigPath);
+    (readFileSync as any).mockReturnValue(JSON.stringify(cwdConfig));
+    
+    const config = loadConfig();
+
+    expect(config.jinaAutoStart).toBe(false);
+    expect(readFileSync).toHaveBeenCalledWith(cwdPath, 'utf-8');
+    expect(readFileSync).toHaveBeenCalledTimes(1);
   });
 
   it('should accept explicit config path via parameter', () => {

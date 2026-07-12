@@ -27,6 +27,41 @@ describe('JinaClient', () => {
     vi.clearAllMocks();
   });
 
+  it('falls back to remote Jina when local Reader returns 200 with error page', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('HTTP ERROR 404', { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ content: 'remote' }), { status: 200 }));
+    const client = new JinaClient({ localReaderUrl: 'http://localhost:3005', logger: logger as any, fetchImpl });
+
+    const result = await client.fetch('https://example.com');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.content).toBe('remote');
+  });
+
+  it('falls back to direct fetch when remote Jina returns 200 with error page', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('HTTP ERROR 403', { status: 200 }))
+      .mockResolvedValueOnce(new Response('<html><body>direct</body></html>', { status: 200 }));
+    const client = new JinaClient({ disableRemote: false, logger: logger as any, fetchImpl });
+
+    const result = await client.fetch('https://example.com');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(result.content).toContain('direct');
+  });
+
+  it('succeeds with direct fetch when Jina returns valid content', async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response('plain markdown', { status: 200 }));
+    const client = new JinaClient({ logger: logger as any, fetchImpl });
+
+    const result = await client.fetch('https://example.com');
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.content).toBe('plain markdown');
+  });
+
   it('prioritizes local Reader when localReaderUrl is set', async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({ content: 'local' }), { status: 200 }));
     const client = new JinaClient({ localReaderUrl: 'http://localhost:3005', logger: logger as any, fetchImpl });

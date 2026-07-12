@@ -202,16 +202,10 @@ function coerceValue(key: string, rawValue: string): any {
   return rawValue;
 }
 
+import { loadConfig } from '../../../core/config.js';
+
 async function showConfig(): Promise<void> {
-  let config: Record<string, any> = {};
-  if (existsSync(defaultConfigPath)) {
-    try {
-      config = JSON.parse(readFileSync(defaultConfigPath, 'utf-8'));
-    } catch (e: any) {
-      console.error(`Failed to read config: ${e.message}`);
-      process.exit(1);
-    }
-  }
+  const config = loadConfig();
   console.log(JSON.stringify(maskSecrets(config), null, 2));
 }
 

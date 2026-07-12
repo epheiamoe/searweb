@@ -143,6 +143,9 @@ export class JinaClient {
     }
 
     const text = await response.text();
+    if (this.isJinaErrorContent(text)) {
+      throw new Error(`Jina Reader returned error page for ${url}`);
+    }
     return this.parseJinaResponse(text, url);
   }
 
@@ -191,6 +194,9 @@ export class JinaClient {
     }
 
     const text = await response.text();
+    if (this.isJinaErrorContent(text)) {
+      throw new Error(`Jina Reader returned error page for ${url}`);
+    }
     return this.parseJinaResponse(text, url);
   }
 
@@ -241,6 +247,18 @@ export class JinaClient {
         content: text,
       };
     }
+  }
+
+  private isJinaErrorContent(text: string): boolean {
+    const errorPatterns = [
+      /HTTP ERROR 404/i,
+      /HTTP ERROR 403/i,
+      /No webpage was found for the web address/i,
+      /You don't have authorization to view this page/i,
+      /Access denied/i,
+      /This page could not be loaded/i,
+    ];
+    return errorPatterns.some(pattern => pattern.test(text));
   }
 
   private cleanUrl(url: string): string {

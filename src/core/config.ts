@@ -4,6 +4,7 @@ import { ServerConfig, ProxyMode } from './types.js';
 import { readFileSync, existsSync } from 'fs';
 import { resolve, dirname, join } from 'path';
 import { fileURLToPath } from 'url';
+import { homedir } from 'os';
 
 export function loadConfig(configPath?: string): ServerConfig {
   const config: ServerConfig = {
@@ -20,8 +21,9 @@ export function loadConfig(configPath?: string): ServerConfig {
     // Explicit config path provided via -c flag
     pathsToTry.push(configPath);
   } else {
-    // Try current working directory first
-    pathsToTry.push(resolve('config.json'));
+    // Priority: current working directory > user config directory > package root
+    pathsToTry.push(resolve('config.json')); // CWD
+    pathsToTry.push(join(homedir(), '.config', 'searweb', 'config.json')); // user config
 
     // Also try the directory where this module is installed (for global installs)
     // This handles the case where user runs searweb from anywhere
@@ -30,7 +32,7 @@ export function loadConfig(configPath?: string): ServerConfig {
       const moduleDir = dirname(__filename);
       // Go up from dist/core/ to package root
       const packageRoot = resolve(moduleDir, '..', '..');
-      pathsToTry.push(join(packageRoot, 'config.json'));
+      pathsToTry.push(join(packageRoot, 'config.json')); // package root
     } catch {
       // If import.meta.url is not available, skip
     }
