@@ -263,6 +263,54 @@ describe('jina-reader Docker module', () => {
         })
       );
     });
+
+    it('recovers from a 409 conflict by reusing the existing container', async () => {
+      const conflictError = new Error(
+        'Conflict. The container name "/searweb-jina-reader" is already in use by container ...'
+      );
+      (conflictError as any).statusCode = 409;
+
+      docker().createContainer.mockRejectedValueOnce(conflictError);
+      docker().pull.mockImplementation((_image: string, callback: Function) => callback(null, {}));
+      docker().modem.followProgress.mockImplementation((_stream: any, callback: Function) => callback(null));
+
+      const existingContainer = createMockContainer(
+        'reader123',
+        { Running: false },
+        { '8081/tcp': [{ HostPort: '3005' }] }
+      );
+      existingContainer.inspect = vi
+        .fn()
+        .mockResolvedValueOnce({
+          State: { Running: false },
+          HostConfig: { PortBindings: { '8081/tcp': [{ HostPort: '3005' }] } },
+        })
+        .mockResolvedValueOnce({
+          State: { Running: true },
+          HostConfig: { PortBindings: { '8081/tcp': [{ HostPort: '3005' }] } },
+        });
+
+      docker().getContainer.mockReturnValue(existingContainer);
+      docker().listContainers.mockResolvedValue([]);
+      docker().listContainers
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([
+          {
+            Names: [`/${jinaReader.JINA_READER_CONTAINER_NAME}`],
+            Id: 'reader123',
+            State: 'created',
+            Ports: [{ PrivatePort: jinaReader.JINA_READER_INTERNAL_PORT, PublicPort: 3005 }],
+          },
+        ]);
+
+      const result = await jinaReader.createJinaReaderContainer({}, logger as any);
+
+      expect(docker().createContainer).toHaveBeenCalledTimes(1);
+      expect(existingContainer.start).toHaveBeenCalled();
+      expect(result?.url).toBe('http://localhost:3005');
+      expect(result?.containerId).toBe('reader123');
+    });
   });
 
   describe('waitForJinaReaderHealthy', () => {
@@ -384,6 +432,47 @@ describe('jina-reader Docker module', () => {
       expect(result.url).toBe('http://localhost:3005');
       expect(result.autoManaged).toBe(true);
       expect(docker().createContainer).toHaveBeenCalled();
+    });
+
+    it('serializes concurrent calls so only one container is created', async () => {
+      docker().ping.mockResolvedValue(undefined);
+      (globalThis.fetch as any).mockResolvedValue({ status: 200 });
+      docker().pull.mockImplementation((_image: string, callback: Function) => callback(null, {}));
+      docker().modem.followProgress.mockImplementation((_stream: any, callback: Function) => callback(null));
+
+      let created = false;
+      const mockStart = vi.fn().mockResolvedValue(undefined);
+
+      docker().listContainers.mockImplementation(async () => {
+        if (created) {
+          return [
+            {
+              Names: [`/${jinaReader.JINA_READER_CONTAINER_NAME}`],
+              Id: 'reader123',
+              State: 'running',
+              Ports: [{ PrivatePort: jinaReader.JINA_READER_INTERNAL_PORT, PublicPort: 3005 }],
+            },
+          ];
+        }
+        return [];
+      });
+
+      docker().createContainer.mockImplementation(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        created = true;
+        return { id: 'reader123', start: mockStart };
+      });
+
+      const [result1, result2] = await Promise.all([
+        jinaReader.ensureJinaReaderRunning({ jinaAutoStart: true }, logger as any),
+        jinaReader.ensureJinaReaderRunning({ jinaAutoStart: true }, logger as any),
+      ]);
+
+      expect(docker().createContainer).toHaveBeenCalledTimes(1);
+      expect(result1.autoManaged).toBe(true);
+      expect(result2.autoManaged).toBe(true);
+      expect(result1.url).toBe('http://localhost:3005');
+      expect(result2.url).toBe('http://localhost:3005');
     });
 
     it('returns unhealthy when creation fails', async () => {

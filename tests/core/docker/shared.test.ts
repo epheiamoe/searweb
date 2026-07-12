@@ -222,17 +222,56 @@ describe('shared Docker utilities', () => {
       expect(mockContainer.remove).toHaveBeenCalledWith({ force: true });
     });
 
+    it('removes container by name when the name lookup succeeds', async () => {
+      const mockContainer = { remove: vi.fn().mockResolvedValue(undefined) };
+      docker().listContainers.mockResolvedValue([
+        { Names: ['/searweb-jina-reader'], Id: 'reader123' },
+      ]);
+      docker().getContainer.mockReturnValue(mockContainer);
+
+      await shared.forceRemoveContainer('searweb-jina-reader');
+
+      expect(docker().getContainer).toHaveBeenCalledWith('reader123');
+      expect(mockContainer.remove).toHaveBeenCalledWith({ force: true });
+    });
+
     it('does not throw when docker is unavailable', async () => {
-      // Simulate getDocker returning null by making the constructor throw.
-      vi.resetModules();
-      vi.doMock('dockerode', () => ({
-        default: class DockerUnavailable {
-          constructor() { throw new Error('no docker'); }
-        },
-      }));
-      const fresh = await import('../../../src/core/docker/shared.js');
-      await expect(fresh.forceRemoveContainer('abc123')).resolves.toBeUndefined();
-      vi.doUnmock('dockerode');
+      const spy = vi.spyOn(shared, 'getDocker').mockReturnValue(null);
+      await expect(shared.forceRemoveContainer('abc123')).resolves.toBeUndefined();
+      spy.mockRestore();
+    });
+  });
+
+  describe('getContainerByName', () => {
+    it('returns the container when the exact name matches', async () => {
+      const mockContainer = { id: 'reader123' };
+      docker().listContainers.mockResolvedValue([
+        { Names: ['/searweb-jina-reader'], Id: 'reader123' },
+      ]);
+      docker().getContainer.mockReturnValue(mockContainer);
+
+      const result = await shared.getContainerByName('searweb-jina-reader');
+
+      expect(result).toBe(mockContainer);
+      expect(docker().getContainer).toHaveBeenCalledWith('reader123');
+    });
+
+    it('returns null when no container matches the name', async () => {
+      docker().listContainers.mockResolvedValue([
+        { Names: ['/other-container'], Id: 'other123' },
+      ]);
+
+      const result = await shared.getContainerByName('searweb-jina-reader');
+
+      expect(result).toBeNull();
+    });
+
+    it('returns null when listContainers fails', async () => {
+      docker().listContainers.mockRejectedValue(new Error('docker down'));
+
+      const result = await shared.getContainerByName('searweb-jina-reader');
+
+      expect(result).toBeNull();
     });
   });
 });

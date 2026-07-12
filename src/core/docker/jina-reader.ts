@@ -23,6 +23,11 @@ export const JINA_READER_INTERNAL_PORT = 8081; // HTTP/1.1 fallback
 
 export interface JinaReaderContainerInfo extends DockerContainerInfo {}
 
+// Module-level FIFO lock that serializes find/start/create operations for the
+// Jina Reader container. This prevents two concurrent CLI calls from both seeing
+// an empty container list and trying to create a container with the same name.
+let _ensureLock: Promise<void> = Promise.resolve();
+
 function buildReaderUrl(hostPort: number): string {
   return `http://localhost:${hostPort}`;
 }
@@ -184,6 +189,30 @@ export async function createJinaReaderContainer(
       };
     } catch (error) {
       const message = (error as Error).message || '';
+      const is409 =
+        (error as any).statusCode === 409 ||
+        message.includes('Conflict') ||
+        message.includes('already in use');
+
+      // If another process created the container between our find and create,
+      // try to find and reuse it rather than giving up.
+      if (is409) {
+        logger?.warn(
+          `Jina Reader container name conflict on attempt ${attempt + 1}, trying to reuse existing container...`
+        );
+        const existing = await findExistingJinaReader();
+        if (existing) {
+          const started = await startExistingJinaReader(existing.containerId, logger);
+          if (started) {
+            logger?.info(`Reused existing Jina Reader container at ${started.url}`);
+            return started;
+          }
+        }
+        logger?.warn('Could not reuse existing Jina Reader container, forcing removal and retrying...');
+        await forceRemoveContainer(JINA_READER_CONTAINER_NAME);
+        continue;
+      }
+
       const isPortConflict =
         message.includes('port') ||
         message.includes('EADDRINUSE') ||
@@ -266,60 +295,75 @@ export async function ensureJinaReaderRunning(
   }
 
   // Step 4: Auto-managed container lifecycle
-  const existing = await findExistingJinaReader();
+  // Serialize find/start/create to avoid races when multiple processes or
+  // concurrent CLI calls try to create the same-named container.
+  let release: (() => void) | undefined;
+  const acquire = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const previous = _ensureLock;
+  _ensureLock = previous.then(() => acquire);
 
-  if (existing) {
-    logger.info(
-      `Found existing Jina Reader container: ${existing.containerId.slice(0, 12)} (status: ${existing.status})`
-    );
+  try {
+    await previous;
 
-    if (existing.status?.toLowerCase() === 'running') {
-      logger.info(`Container is already running at ${existing.url}`);
-      const healthy = await waitForJinaReaderHealthy(existing.url, 10000);
+    const existing = await findExistingJinaReader();
+
+    if (existing) {
+      logger.info(
+        `Found existing Jina Reader container: ${existing.containerId.slice(0, 12)} (status: ${existing.status})`
+      );
+
+      if (existing.status?.toLowerCase() === 'running') {
+        logger.info(`Container is already running at ${existing.url}`);
+        const healthy = await waitForJinaReaderHealthy(existing.url, 10000);
+        return {
+          url: existing.url,
+          healthy,
+          autoManaged: true,
+        };
+      }
+
+      logger.info('Starting existing Jina Reader container...');
+      const started = await startExistingJinaReader(existing.containerId, logger);
+
+      if (started) {
+        logger.info(`Container started at ${started.url}`);
+        const healthy = await waitForJinaReaderHealthy(started.url);
+        return {
+          url: started.url,
+          healthy,
+          autoManaged: true,
+        };
+      }
+
+      logger.warn('Start failed, removing old Jina Reader container and recreating with new port...');
+      await forceRemoveContainer(existing.containerId);
+    }
+
+    logger.info('Creating new Jina Reader container...');
+    const created = await createJinaReaderContainer(config, logger);
+
+    if (created) {
+      logger.info(`Waiting for Jina Reader to be ready at ${created.url}...`);
+      const healthy = await waitForJinaReaderHealthy(created.url);
+
       return {
-        url: existing.url,
+        url: created.url,
         healthy,
         autoManaged: true,
       };
     }
-
-    logger.info('Starting existing Jina Reader container...');
-    const started = await startExistingJinaReader(existing.containerId, logger);
-
-    if (started) {
-      logger.info(`Container started at ${started.url}`);
-      const healthy = await waitForJinaReaderHealthy(started.url);
-      return {
-        url: started.url,
-        healthy,
-        autoManaged: true,
-      };
-    }
-
-    logger.warn('Start failed, removing old Jina Reader container and recreating with new port...');
-    await forceRemoveContainer(existing.containerId);
-  }
-
-  logger.info('Creating new Jina Reader container...');
-  const created = await createJinaReaderContainer(config, logger);
-
-  if (created) {
-    logger.info(`Waiting for Jina Reader to be ready at ${created.url}...`);
-    const healthy = await waitForJinaReaderHealthy(created.url);
 
     return {
-      url: created.url,
-      healthy,
-      autoManaged: true,
+      url: config.jinaLocalUrl || '',
+      healthy: false,
+      autoManaged: false,
+      error: 'Failed to create or start Jina Reader container',
     };
+  } finally {
+    release!();
   }
-
-  return {
-    url: config.jinaLocalUrl || '',
-    healthy: false,
-    autoManaged: false,
-    error: 'Failed to create or start Jina Reader container',
-  };
 }
 
 /**

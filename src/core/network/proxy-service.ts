@@ -262,18 +262,30 @@ export class ProxyService {
   private createAgent(proxyUrl: string, targetUrl: string): http.Agent | https.Agent | undefined {
     try {
       const proxyLower = proxyUrl.toLowerCase();
+      let agent: http.Agent | https.Agent | undefined;
       if (proxyLower.startsWith('socks')) {
         // Prefer proxy-side DNS resolution (socks5h) to match `curl --socks5-hostname`
         // and avoid local DNS failures common with clients like Clash.
         const agentUrl = proxyLower.startsWith('socks5://') || proxyLower.startsWith('socks://')
           ? proxyUrl.replace(/^socks(5?:\/\/)/i, 'socks5h://')
           : proxyUrl;
-        return new SocksProxyAgent(agentUrl);
+        agent = new SocksProxyAgent(agentUrl);
+      } else if (targetUrl.startsWith('https:')) {
+        agent = new HttpsProxyAgent(proxyUrl);
+      } else {
+        agent = new HttpProxyAgent(proxyUrl);
       }
-      if (targetUrl.startsWith('https:')) {
-        return new HttpsProxyAgent(proxyUrl);
+
+      if (agent) {
+        // Catch agent-level socket errors (e.g., TLS reset by an HTTP proxy that
+        // cannot handle HTTPS) so they do not become unhandled 'error' events on
+        // internal sockets and crash the process.
+        agent.on('error', (err) => {
+          this.logger.debug(`Agent error for ${maskProxyUrl(proxyUrl)}: ${(err as Error).message}`);
+        });
       }
-      return new HttpProxyAgent(proxyUrl);
+
+      return agent;
     } catch (err) {
       this.logger.debug(`Failed to create agent for ${maskProxyUrl(proxyUrl)}`, err);
       return undefined;

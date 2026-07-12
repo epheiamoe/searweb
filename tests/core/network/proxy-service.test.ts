@@ -444,4 +444,29 @@ describe('ProxyService', () => {
     const infoCount = logger.messages.filter(m => m.level === 'info').length;
     expect(infoCount).toBe(0);
   });
+
+  it('logs agent socket errors without crashing and rejects through request error', async () => {
+    stateStore.state = {
+      activeProxyUrl: 'http://127.0.0.1:7890',
+      source: 'env',
+      lastVerifiedAt: new Date().toISOString(),
+    };
+
+    (http.request as any).mockImplementation((options: any, _callback: any) => {
+      // Simulate an agent-level socket error that would otherwise be unhandled.
+      (options.agent as EventEmitter)?.emit('error', new Error('Agent socket error'));
+      return createMockRequest(undefined, undefined, new Error('Request error'));
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    await expect(service.fetch('http://example.com')).rejects.toThrow();
+
+    const agentErrorDebug = logger.messages.find(
+      (m) => m.level === 'debug' && m.args.join(' ').includes('Agent socket error')
+    );
+    expect(agentErrorDebug).toBeDefined();
+  });
 });

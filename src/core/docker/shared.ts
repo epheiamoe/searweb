@@ -46,10 +46,44 @@ export async function isDockerAvailable(): Promise<boolean> {
   }
 }
 
+/** Return a Docker container instance by exact name, or null if not found. */
+export async function getContainerByName(name: string): Promise<ReturnType<Docker['getContainer']> | null> {
+  const docker = getDocker();
+  if (!docker) return null;
+
+  try {
+    const containers = await docker.listContainers({ all: true });
+    const normalized = name.startsWith('/') ? name : `/${name}`;
+
+    for (const containerInfo of containers) {
+      const names = containerInfo.Names || [];
+      if (names.some((n: string) => n === normalized)) {
+        return docker.getContainer(containerInfo.Id);
+      }
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 /** Force-remove a container by ID or name; errors are ignored. */
 export async function forceRemoveContainer(identifier: string): Promise<void> {
   const docker = getDocker();
   if (!docker) return;
+
+  // Try by name first because docker.getContainer(name) can be unreliable when
+  // the container is being created concurrently or is in a transient state.
+  const byName = await getContainerByName(identifier);
+  if (byName) {
+    try {
+      await byName.remove({ force: true });
+      return;
+    } catch {
+      // Fall through to ID-based removal.
+    }
+  }
 
   try {
     const container = docker.getContainer(identifier);
