@@ -48,7 +48,8 @@ Add SOCKS5/SOCKS4 support to the existing proxy infrastructure so that:
 
 ## Completed
 
-- Final commit: `17bc6db`
+- Final implementation commit: `17bc6db`
+- Documentation commit: `360169a`
 - Pushed to origin `master`
 - Test results: `189/189` passed across 18 test files (L1), plus successful L2 CLI verification of `config --show`, `fetch http://example.com`, `fetch https://httpbin.org/status/404`, and `wiki "test"`.
 - Lesson captured in `docs/lessons/2026-07-socks5-proxy-detection.md`.
