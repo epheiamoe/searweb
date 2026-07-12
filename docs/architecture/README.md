@@ -86,6 +86,13 @@ Searweb is a dual-mode web search tool that operates as both a Model Context Pro
 - **Settings mount**: Mounts `searxng-settings.yml` to enable JSON API
 - Health check with configurable timeout
 
+### 7. Network / Proxy (`src/core/network/`)
+
+- Provides transparent HTTP/SOCKS5/SOCKS4 proxy support for outbound requests.
+- Accepts explicit `socks5://`, `socks4://`, `socks://`, and `socks5h://` URLs, plus bare `host:port` discovery from config, environment variables, and OS settings.
+- Transparently retries HTTPS targets through `socks5h://` when an HTTP proxy fails before TLS handshake, preserving credentials.
+- Masks proxy credentials in debug logs.
+
 ## Data Flow
 
 ### MCP Mode
