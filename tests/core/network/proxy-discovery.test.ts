@@ -99,7 +99,26 @@ describe('DefaultProxyDiscovery', () => {
     expect(candidates).toEqual([]);
   });
 
-  it('follows priority config > env > os in auto mode', async () => {
+  it('allows explicit socks5:// and socks4:// URLs in manual mode', async () => {
+    const config: ProxyConfig = { proxyMode: 'manual', proxyUrl: 'socks5://127.0.0.1:7890' };
+    const discovery = new DefaultProxyDiscovery(config, logger as any);
+
+    const candidates = await discovery.discover('https://example.com');
+
+    expect(candidates.map(c => c.url)).toEqual(['socks5://127.0.0.1:7890']);
+  });
+
+  it('preserves socks:// URLs from environment variables', async () => {
+    process.env.HTTPS_PROXY = 'socks5://env-socks:1080';
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const discovery = new DefaultProxyDiscovery(config, logger as any);
+
+    const candidates = await discovery.discover('https://example.com');
+
+    expect(candidates.map(c => c.url)).toEqual(['socks5://env-socks:1080']);
+  });
+
+  it('follows priority env > os in auto mode (config proxyUrl is not auto-discovered)', async () => {
     process.env.HTTPS_PROXY = 'http://env-proxy:7890';
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     mockExec({ stdout: 'Enabled: Yes\nServer: os-proxy\nPort: 8888' });

@@ -60,7 +60,7 @@ export class DefaultProxyDiscovery implements ProxyDiscovery {
       candidates.push({ url, source: 'env' });
     }
 
-    // 3. OS-specific detection
+    // 2. OS-specific detection
     if (this.config.proxyAutoDetect !== false) {
       const osProxies = await this.collectOsProxies(isHttps);
       for (const url of osProxies) {
@@ -232,7 +232,8 @@ export class DefaultProxyDiscovery implements ProxyDiscovery {
 
   private normalizeProxyUrl(hostPort: string, scheme: 'http' | 'https'): string {
     const trimmed = hostPort.trim();
-    if (/^https?:\/\//.test(trimmed)) {
+    // Preserve any explicit scheme (including socks5://, socks4://, socks://).
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed)) {
       return trimmed;
     }
     return `${scheme}://${trimmed}`;

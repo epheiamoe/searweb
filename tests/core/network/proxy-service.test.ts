@@ -98,6 +98,14 @@ vi.mock('http-proxy-agent', () => {
   };
 });
 
+vi.mock('socks-proxy-agent', () => {
+  return {
+    SocksProxyAgent: class extends http.Agent {
+      constructor(_url: string) { super(); }
+    },
+  };
+});
+
 vi.mock('https-proxy-agent', () => {
   return {
     HttpsProxyAgent: class extends https.Agent {
@@ -304,6 +312,80 @@ describe('ProxyService', () => {
     expect(hasRawCredential).toBe(false);
 
     const hasMaskedCredential = proxyDebugs.some(msg => msg.includes('http://****:****@proxy:7890'));
+    expect(hasMaskedCredential).toBe(true);
+  });
+
+  it('selects SocksProxyAgent for socks5:// URLs', async () => {
+    discovery.candidates = [{ url: 'socks5://127.0.0.1:7890', source: 'env' }];
+
+    (http.request as any).mockImplementation((_options: any, callback: any) => {
+      const res = createMockResponse(200, 'via socks');
+      return createMockRequest(callback, res);
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    const res = await service.fetch('http://example.com');
+    const text = await res.text();
+
+    expect(text).toBe('via socks');
+    expect(stateStore.state?.activeProxyUrl).toBe('socks5://127.0.0.1:7890');
+  });
+
+  it('falls back to socks5h:// when http:// proxy fails for HTTPS target', async () => {
+    discovery.candidates = [{ url: 'http://127.0.0.1:7890', source: 'env' }];
+
+    let requestCount = 0;
+    (https.request as any).mockImplementation((_options: any, callback: any) => {
+      requestCount++;
+      if (requestCount === 1) {
+        // First attempt via HTTP proxy fails before TLS.
+        return createMockRequest(undefined, undefined, new Error('ECONNRESET'));
+      }
+      // Second attempt via SOCKS5h succeeds.
+      const res = createMockResponse(200, 'via socks fallback');
+      return createMockRequest(callback, res);
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    const res = await service.fetch('https://example.com');
+    const text = await res.text();
+
+    expect(text).toBe('via socks fallback');
+    expect(requestCount).toBe(2);
+    expect(stateStore.state?.activeProxyUrl).toBe('socks5h://127.0.0.1:7890');
+  });
+
+  it('masks SOCKS proxy credentials in debug logs', async () => {
+    discovery.candidates = [{ url: 'socks5://user:secret@127.0.0.1:7890', source: 'env' }];
+
+    (http.request as any).mockImplementation((_options: any, callback: any) => {
+      const res = createMockResponse(200, 'via socks with credentials');
+      return createMockRequest(callback, res);
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    const res = await service.fetch('http://example.com');
+    const text = await res.text();
+
+    expect(text).toBe('via socks with credentials');
+
+    const proxyDebugs = logger.messages
+      .filter(m => m.level === 'debug')
+      .map(m => m.args.join(' '));
+
+    const hasRawCredential = proxyDebugs.some(msg => msg.includes('secret'));
+    expect(hasRawCredential).toBe(false);
+
+    const hasMaskedCredential = proxyDebugs.some(msg => msg.includes('socks5://****:****@127.0.0.1:7890'));
     expect(hasMaskedCredential).toBe(true);
   });
 

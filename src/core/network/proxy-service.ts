@@ -5,6 +5,7 @@ import https from 'https';
 import { Readable } from 'stream';
 import { HttpsProxyAgent } from 'https-proxy-agent';
 import { HttpProxyAgent } from 'http-proxy-agent';
+import { SocksProxyAgent } from 'socks-proxy-agent';
 import { URL } from 'url';
 import { ProxyConfig, ProxyState, Logger, NullLogger } from '../types.js';
 import { ProxyDiscovery, DefaultProxyDiscovery, ProxyCandidate } from './proxy-discovery.js';
@@ -173,7 +174,21 @@ export class ProxyService {
         return res;
       } catch (err) {
         this.logger.debug(`Cached proxy failed for ${url}`, err);
-        // Continue to direct / discovery.
+
+        // For HTTPS targets, if the cached HTTP proxy failed before TLS, try SOCKS5
+        // on the same host/port before falling back to direct/discovery.
+        const fallbackUrl = url.startsWith('https:') ? this.deriveSocks5FallbackUrl(this._state.activeProxyUrl) : null;
+        if (fallbackUrl) {
+          try {
+            const agent = this.createAgent(fallbackUrl, url);
+            this.logger.debug(`Trying SOCKS5 fallback ${maskProxyUrl(fallbackUrl)} for ${url}`);
+            const res = await this.requestViaAgent(url, init, agent);
+            this.updateCache(fallbackUrl, this._state.source);
+            return res;
+          } catch (socksErr) {
+            this.logger.debug(`SOCKS5 fallback failed for ${url}`, socksErr);
+          }
+        }
       }
     }
 
@@ -191,6 +206,7 @@ export class ProxyService {
     const candidates = await this.discovery.discover(url);
     this.logger.debug(`Discovered ${candidates.length} proxy candidates for ${url}`);
 
+    const isHttpsTarget = url.startsWith('https:');
     for (const candidate of candidates) {
       try {
         const agent = this.createAgent(candidate.url, url);
@@ -200,6 +216,22 @@ export class ProxyService {
         return res;
       } catch (err) {
         this.logger.debug(`Proxy ${maskProxyUrl(candidate.url)} failed for ${url}`, err);
+
+        // For HTTPS targets, if an HTTP proxy failed before TLS handshake, try the same
+        // host/port as SOCKS5 before moving to the next candidate. This handles proxies
+        // such as Clash that advertise as HTTP but actually speak SOCKS5 on the same port.
+        const fallbackUrl = isHttpsTarget ? this.deriveSocks5FallbackUrl(candidate.url) : null;
+        if (fallbackUrl) {
+          try {
+            const agent = this.createAgent(fallbackUrl, url);
+            this.logger.debug(`Trying SOCKS5 fallback ${maskProxyUrl(fallbackUrl)} for ${url}`);
+            const res = await this.requestViaAgent(url, init, agent);
+            this.updateCache(fallbackUrl, candidate.source);
+            return res;
+          } catch (socksErr) {
+            this.logger.debug(`SOCKS5 fallback failed for ${url}`, socksErr);
+          }
+        }
       }
     }
 
@@ -229,6 +261,15 @@ export class ProxyService {
 
   private createAgent(proxyUrl: string, targetUrl: string): http.Agent | https.Agent | undefined {
     try {
+      const proxyLower = proxyUrl.toLowerCase();
+      if (proxyLower.startsWith('socks')) {
+        // Prefer proxy-side DNS resolution (socks5h) to match `curl --socks5-hostname`
+        // and avoid local DNS failures common with clients like Clash.
+        const agentUrl = proxyLower.startsWith('socks5://') || proxyLower.startsWith('socks://')
+          ? proxyUrl.replace(/^socks(5?:\/\/)/i, 'socks5h://')
+          : proxyUrl;
+        return new SocksProxyAgent(agentUrl);
+      }
       if (targetUrl.startsWith('https:')) {
         return new HttpsProxyAgent(proxyUrl);
       }
@@ -236,6 +277,25 @@ export class ProxyService {
     } catch (err) {
       this.logger.debug(`Failed to create agent for ${maskProxyUrl(proxyUrl)}`, err);
       return undefined;
+    }
+  }
+
+  /**
+   * Derive a SOCKS5 fallback URL from an HTTP(S) proxy URL. Returns null for URLs that
+   * already are SOCKS, are missing a host, or cannot be parsed. SOCKS5h is used so that
+   * hostname resolution happens through the proxy, matching `curl --socks5-hostname`.
+   */
+  private deriveSocks5FallbackUrl(proxyUrl: string): string | null {
+    const lower = proxyUrl.toLowerCase();
+    if (lower.startsWith('socks')) return null;
+    try {
+      const parsed = new URL(proxyUrl);
+      const host = parsed.hostname;
+      const port = parsed.port;
+      if (!host || !port) return null;
+      return `socks5h://${host}:${port}`;
+    } catch {
+      return null;
     }
   }
 
