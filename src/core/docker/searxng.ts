@@ -1,9 +1,20 @@
 // src/core/docker/searxng.ts - SearXNG Docker container management with auto-discovery
 
-import Docker from 'dockerode';
 import { Logger, SearxngStatus } from '../types.js';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import {
+  DockerContainerInfo,
+  getDocker,
+  isDockerAvailable,
+  forceRemoveContainer,
+  findAvailablePortDeductively,
+  pullImageIfNeeded,
+  waitForHealthy,
+} from './shared.js';
+
+// Re-export shared utilities that callers previously imported from this module.
+export { isDockerAvailable };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -14,47 +25,8 @@ const CONTAINER_NAME = 'searweb-searxng';
 const CONTAINER_IMAGE = 'searxng/searxng:latest';
 const DEFAULT_PORT = 8080;
 const HEALTH_CHECK_TIMEOUT = 30000; // 30 seconds
-const HEALTH_CHECK_INTERVAL = 1000; // 1 second
 
-let _docker: Docker | null = null;
-
-function getDocker(): Docker | null {
-  if (_docker) return _docker;
-
-  try {
-    // Use Docker Desktop default pipe on Windows
-    if (process.platform === 'win32') {
-      _docker = new Docker({ socketPath: '\\\\.\\pipe\\docker_engine' });
-    } else {
-      _docker = new Docker({ socketPath: '/var/run/docker.sock' });
-    }
-    return _docker;
-  } catch {
-    return null;
-  }
-}
-
-export interface SearxngContainerInfo {
-  url: string;
-  containerId: string;
-  status: 'running' | 'created' | 'exited' | 'unknown';
-  autoManaged: boolean;
-}
-
-/**
- * Check if Docker is available
- */
-export async function isDockerAvailable(): Promise<boolean> {
-  const docker = getDocker();
-  if (!docker) return false;
-
-  try {
-    await docker.ping();
-    return true;
-  } catch {
-    return false;
-  }
-}
+export type SearxngContainerInfo = DockerContainerInfo;
 
 /**
  * Find existing searweb-searxng container
@@ -92,7 +64,8 @@ export async function findExistingSearxng(): Promise<SearxngContainerInfo | null
  * Start an existing container. If port conflict, returns null so caller can recreate.
  */
 export async function startExistingContainer(
-  containerId: string
+  containerId: string,
+  logger?: Logger
 ): Promise<SearxngContainerInfo | null> {
   const docker = getDocker();
   if (!docker) return null;
@@ -131,83 +104,12 @@ export async function startExistingContainer(
     const message = (err as Error).message || '';
     // Port conflict is expected - let caller recreate with new port
     if (message.includes('port') || message.includes('EADDRINUSE') || message.includes('bind')) {
-      console.error(`Port conflict starting container: ${message}`);
+      logger?.warn(`Port conflict starting container: ${message}`);
     } else {
-      console.error('Failed to start existing container:', message);
+      logger?.warn(`Failed to start existing container: ${message}`);
     }
     return null;
   }
-}
-
-/**
- * Force remove a container by ID or name
- */
-async function forceRemoveContainer(identifier: string): Promise<void> {
-  const docker = getDocker();
-  if (!docker) return;
-
-  try {
-    const container = docker.getContainer(identifier);
-    await container.remove({ force: true });
-    console.error(`Removed old container: ${identifier.slice(0, 12)}`);
-  } catch {
-    // Ignore errors (container might not exist)
-  }
-}
-
-/**
- * Get ports already allocated by Docker containers
- */
-async function getDockerAllocatedPorts(): Promise<Set<number>> {
-  const docker = getDocker();
-  if (!docker) return new Set();
-
-  try {
-    const containers = await docker.listContainers({ all: true });
-    const ports = new Set<number>();
-
-    for (const container of containers) {
-      for (const port of container.Ports || []) {
-        if (port.PublicPort) {
-          ports.add(port.PublicPort);
-        }
-      }
-    }
-
-    return ports;
-  } catch {
-    return new Set();
-  }
-}
-
-/**
- * Find an available port, checking both Node.js and Docker allocations
- */
-async function findAvailablePortDeductively(
-  startPort: number = DEFAULT_PORT,
-  maxAttempts: number = 20
-): Promise<number | null> {
-  const dockerPorts = await getDockerAllocatedPorts();
-  const net = await import('net');
-
-  for (let port = startPort; port < startPort + maxAttempts; port++) {
-    // Skip if Docker already allocated this port
-    if (dockerPorts.has(port)) continue;
-
-    // Check if Node.js can bind to it
-    const available = await new Promise<boolean>((resolve) => {
-      const server = net.createServer();
-      server.once('error', () => resolve(false));
-      server.once('listening', () => {
-        server.close(() => resolve(true));
-      });
-      server.listen(port, '127.0.0.1');
-    });
-
-    if (available) return port;
-  }
-
-  return null;
 }
 
 /**
@@ -232,20 +134,7 @@ export async function createSearxngContainer(
 
       // Step 2: Pull image if not exists (only on first attempt)
       if (attempt === 0) {
-        logger?.info('Pulling SearXNG image...');
-        await new Promise((resolve, reject) => {
-          docker.pull(CONTAINER_IMAGE, (err: any, stream: any) => {
-            if (err) {
-              // Image might already exist locally, continue
-              resolve(undefined);
-              return;
-            }
-            docker.modem.followProgress(stream, (err: any) => {
-              if (err) reject(err);
-              else resolve(undefined);
-            });
-          });
-        });
+        await pullImageIfNeeded(docker, CONTAINER_IMAGE, logger);
       }
 
       // Step 3: Find available port
@@ -320,25 +209,7 @@ export async function waitForSearxngHealthy(
   url: string,
   timeout: number = HEALTH_CHECK_TIMEOUT
 ): Promise<boolean> {
-  const startTime = Date.now();
-
-  while (Date.now() - startTime < timeout) {
-    try {
-      const response = await fetch(`${url}/healthz`, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (response.ok) {
-        return true;
-      }
-    } catch {
-      // Not ready yet
-    }
-
-    await new Promise(resolve => setTimeout(resolve, HEALTH_CHECK_INTERVAL));
-  }
-
-  return false;
+  return waitForHealthy(url, { path: '/healthz', timeout });
 }
 
 /**
@@ -385,7 +256,7 @@ export async function ensureSearxngRunning(logger: Logger): Promise<SearxngStatu
 
     // Case 2: Created or exited - try to start it
     logger.info('Starting existing container...');
-    const started = await startExistingContainer(existing.containerId);
+    const started = await startExistingContainer(existing.containerId, logger);
 
     if (started) {
       logger.info(`Container started at ${started.url}`);
@@ -442,7 +313,6 @@ export async function stopSearxngContainer(): Promise<void> {
     if (searxng) {
       const container = docker.getContainer(searxng.Id);
       await container.stop();
-      console.error('SearXNG container stopped.');
     }
   } catch {
     // Ignore errors during cleanup
