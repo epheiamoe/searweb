@@ -63,6 +63,21 @@ describe('DefaultProxyDiscovery', () => {
     expect(candidates[0].source).toBe('config');
   });
 
+  it('excludes env and OS proxies in manual mode', async () => {
+    process.env.HTTPS_PROXY = 'http://env-proxy:7890';
+    Object.defineProperty(process, 'platform', { value: 'darwin' });
+    mockExec({ stdout: 'Enabled: Yes\nServer: os-proxy\nPort: 8888' });
+
+    const config: ProxyConfig = { proxyMode: 'manual', proxyUrl: 'http://manual:8080', proxyAutoDetect: true };
+    const discovery = new DefaultProxyDiscovery(config, logger as any);
+
+    const candidates = await discovery.discover('https://example.com');
+
+    expect(candidates.map(c => ({ url: c.url, source: c.source }))).toEqual([
+      { url: 'http://manual:8080', source: 'config' },
+    ]);
+  });
+
   it('ignores manual proxy when mode is auto and falls back to env', async () => {
     process.env.HTTPS_PROXY = 'http://env-proxy:7890';
     const config: ProxyConfig = { proxyMode: 'auto' };
@@ -84,17 +99,17 @@ describe('DefaultProxyDiscovery', () => {
     expect(candidates).toEqual([]);
   });
 
-  it('follows priority config > env > os', async () => {
+  it('follows priority config > env > os in auto mode', async () => {
     process.env.HTTPS_PROXY = 'http://env-proxy:7890';
     Object.defineProperty(process, 'platform', { value: 'darwin' });
     mockExec({ stdout: 'Enabled: Yes\nServer: os-proxy\nPort: 8888' });
 
-    const config: ProxyConfig = { proxyMode: 'manual', proxyUrl: 'http://config-proxy:8080', proxyAutoDetect: true };
+    const config: ProxyConfig = { proxyMode: 'auto', proxyUrl: 'http://config-proxy:8080', proxyAutoDetect: true };
     const discovery = new DefaultProxyDiscovery(config, logger as any);
 
     const candidates = await discovery.discover('https://example.com');
 
-    expect(candidates.map(c => c.source)).toEqual(['config', 'env', 'os']);
+    expect(candidates.map(c => c.source)).toEqual(['env', 'os']);
   });
 
   it('picks HTTPS_PROXY for https targets and HTTP_PROXY for http targets', async () => {

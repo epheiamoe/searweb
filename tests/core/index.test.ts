@@ -1,4 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { createCore } from '../../src/core/index.js';
 import * as jinaReader from '../../src/core/docker/jina-reader.js';
 
@@ -19,15 +22,30 @@ const logger = {
   debug: vi.fn(),
 };
 
+const tmpCachePath = path.join(os.tmpdir(), `searweb-proxy-cache-${Date.now()}.json`);
+
 describe('createCore', () => {
   beforeEach(() => {
     vi.mocked(jinaReader.ensureJinaReaderRunning).mockReset();
     vi.mocked(jinaReader.checkJinaReaderHealth).mockReset();
     vi.mocked(jinaReader.findExistingJinaReader).mockReset();
+    try {
+      fs.unlinkSync(tmpCachePath);
+    } catch {
+      // ignore if missing
+    }
+    global.fetch = vi.fn().mockResolvedValue(
+      new Response('<html><body>hello</body></html>', { status: 200 })
+    );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    try {
+      fs.unlinkSync(tmpCachePath);
+    } catch {
+      // ignore if missing
+    }
   });
 
   describe('checkJinaReaderHealth', () => {
@@ -95,6 +113,27 @@ describe('createCore', () => {
       const health = await core.checkJinaReaderHealth();
       expect(health.healthy).toBe(true);
       expect(jinaReader.checkJinaReaderHealth).toHaveBeenCalledWith('http://localhost:3005');
+    });
+  });
+
+  describe('proxy state cache', () => {
+    it('persists proxy state cache to disk', async () => {
+      const core = createCore(
+        {
+          proxyMode: 'auto',
+          proxyCachePath: tmpCachePath,
+          jinaDisableRemote: true,
+          jinaLocalFallback: true,
+        },
+        logger
+      );
+
+      await core.fetchWebMarkdown('https://example.com');
+
+      expect(fs.existsSync(tmpCachePath)).toBe(true);
+      const state = JSON.parse(fs.readFileSync(tmpCachePath, 'utf-8'));
+      expect(state.activeProxyUrl).toBeNull();
+      expect(state.source).toBe('direct');
     });
   });
 });

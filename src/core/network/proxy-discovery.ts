@@ -44,14 +44,17 @@ export class DefaultProxyDiscovery implements ProxyDiscovery {
       return candidates;
     }
 
-    const isHttps = targetUrl.startsWith('https:');
-
-    // 1. Explicit manual config (highest priority)
-    if (this.config.proxyMode === 'manual' && this.config.proxyUrl) {
-      candidates.push({ url: this.config.proxyUrl, source: 'config' });
+    // Manual mode: only the configured proxy URL is used, no env/OS fallback.
+    if (this.config.proxyMode === 'manual') {
+      if (this.config.proxyUrl) {
+        candidates.push({ url: this.config.proxyUrl, source: 'config' });
+      }
+      return candidates;
     }
 
-    // 2. Environment variables
+    const isHttps = targetUrl.startsWith('https:');
+
+    // 1. Environment variables
     const envProxies = this.collectEnvProxies(isHttps);
     for (const url of envProxies) {
       candidates.push({ url, source: 'env' });

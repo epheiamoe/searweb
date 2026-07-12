@@ -5,6 +5,7 @@ dist/
 .env
 .env.local
 config.json
+proxy-cache.json
 out-of-date/
 .config/
 coverage/

@@ -277,8 +277,37 @@ describe('ProxyService', () => {
     expect(agent).toBeDefined();
   });
 
+  it('masks proxy credentials in debug logs', async () => {
+    discovery.candidates = [
+      { url: 'http://user:secret@proxy:7890', source: 'env' },
+    ];
+
+    (http.request as any).mockImplementation((_options: any, callback: any) => {
+      const res = createMockResponse(200, 'via proxy with credentials');
+      return createMockRequest(callback, res);
+    });
+
+    const directFetch = vi.fn().mockRejectedValue(new Error('direct blocked'));
+    const config: ProxyConfig = { proxyMode: 'auto' };
+    const service = new ProxyService({ config, logger: logger as any, discovery, stateStore, directFetch });
+
+    const res = await service.fetch('http://example.com');
+    const text = await res.text();
+
+    expect(text).toBe('via proxy with credentials');
+
+    const proxyDebugs = logger.messages
+      .filter(m => m.level === 'debug')
+      .map(m => m.args.join(' '));
+
+    const hasRawCredential = proxyDebugs.some(msg => msg.includes('secret'));
+    expect(hasRawCredential).toBe(false);
+
+    const hasMaskedCredential = proxyDebugs.some(msg => msg.includes('http://****:****@proxy:7890'));
+    expect(hasMaskedCredential).toBe(true);
+  });
+
   it('logs retry messages to stderr via logger only', async () => {
-    discovery.candidates = [{ url: 'http://proxy:7890', source: 'env' }];
     (http.request as any).mockImplementation((_options: any, _callback: any) => {
       return createMockRequest(undefined, undefined, new Error('proxy down'));
     });

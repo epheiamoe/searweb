@@ -10,6 +10,26 @@ import { ProxyConfig, ProxyState, Logger, NullLogger } from '../types.js';
 import { ProxyDiscovery, DefaultProxyDiscovery, ProxyCandidate } from './proxy-discovery.js';
 import { ProxyStateStore, FileProxyStateStore } from './proxy-state-store.js';
 
+/**
+ * Masks credentials in a proxy URL before logging.
+ * Returns the original URL when it contains no credentials or is not parseable.
+ * The actual URL must still be used for agent creation; this helper is log-only.
+ */
+function maskProxyUrl(url: string | null): string | null {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (u.username || u.password) {
+      u.username = '****';
+      u.password = '****';
+      return u.toString();
+    }
+  } catch {
+    // ignore invalid URLs
+  }
+  return url;
+}
+
 export interface ProxyAgentInfo {
   proxyUrl: string | null;
   agent: http.Agent | https.Agent | undefined;
@@ -99,7 +119,7 @@ export class ProxyService {
     const cached = this.stateStore?.load();
     if (cached && !this.isExpired(cached)) {
       this._state = cached;
-      this.logger.debug(`Loaded cached proxy state from ${cached.source}: ${cached.activeProxyUrl ?? 'direct'}`);
+      this.logger.debug(`Loaded cached proxy state from ${cached.source}: ${maskProxyUrl(cached.activeProxyUrl) ?? 'direct'}`);
     }
   }
 
@@ -147,7 +167,7 @@ export class ProxyService {
     if (this._state && !this.isExpired(this._state) && this._state.activeProxyUrl) {
       try {
         const agent = this.createAgent(this._state.activeProxyUrl, url);
-        this.logger.debug(`Trying cached proxy ${this._state.activeProxyUrl} for ${url}`);
+        this.logger.debug(`Trying cached proxy ${maskProxyUrl(this._state.activeProxyUrl)} for ${url}`);
         const res = await this.requestViaAgent(url, init, agent);
         this.refreshCache(this._state.activeProxyUrl, this._state.source);
         return res;
@@ -174,12 +194,12 @@ export class ProxyService {
     for (const candidate of candidates) {
       try {
         const agent = this.createAgent(candidate.url, url);
-        this.logger.debug(`Trying proxy ${candidate.url} (${candidate.source}) for ${url}`);
+        this.logger.debug(`Trying proxy ${maskProxyUrl(candidate.url)} (${candidate.source}) for ${url}`);
         const res = await this.requestViaAgent(url, init, agent);
         this.updateCache(candidate.url, candidate.source);
         return res;
       } catch (err) {
-        this.logger.debug(`Proxy ${candidate.url} failed for ${url}`, err);
+        this.logger.debug(`Proxy ${maskProxyUrl(candidate.url)} failed for ${url}`, err);
       }
     }
 
@@ -214,7 +234,7 @@ export class ProxyService {
       }
       return new HttpProxyAgent(proxyUrl);
     } catch (err) {
-      this.logger.debug(`Failed to create agent for ${proxyUrl}`, err);
+      this.logger.debug(`Failed to create agent for ${maskProxyUrl(proxyUrl)}`, err);
       return undefined;
     }
   }

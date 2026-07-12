@@ -18,6 +18,7 @@ import { searchSearxng, checkSearxngHealth } from './search/searxng.js';
 import { searchWikipedia } from './search/wikipedia.js';
 import { ResearchService } from './research/index.js';
 import { ProxyService } from './network/proxy-service.js';
+import { FileProxyStateStore } from './network/proxy-state-store.js';
 import { setDefaultProxyService } from './network/proxied-fetch.js';
 import { ensureSearxngRunning } from './docker/searxng.js';
 import { ensureJinaReaderRunning, checkJinaReaderHealth, findExistingJinaReader } from './docker/jina-reader.js';
@@ -30,7 +31,11 @@ export function createCore(config: ServerConfig, logger?: Logger): CoreServices 
 
   // Initialize proxy discovery / retry / caching service and make it the default
   // for all modules that import proxiedFetch.
-  const proxyService = new ProxyService({ config, logger: log });
+  const proxyService = new ProxyService({
+    config,
+    logger: log,
+    stateStore: new FileProxyStateStore(config.proxyCachePath || 'proxy-cache.json', log),
+  });
   setDefaultProxyService(proxyService);
 
   // Single JinaClient shared by FetchService and ResearchService. It uses the
